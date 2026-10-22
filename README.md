@@ -4,6 +4,20 @@ A video editor written in Rust where you **edit text instead of video**: every c
 transcribed and shown like a text document. Delete words and the video is cut at exactly
 those spots. **Silence is detected and removed automatically.**
 
+This project is used as experiment to see how far agentic coding already is.
+
+## How can i support this work?
+
+TextCutForge is free. Its code was largely generated with AI, and I don't want to charge money
+for generated code. If the app is useful to you, please donate whatever you like to an
+organization that protects animals or children instead. If you choose to donate because of this text, send me a notification on Instagram ([@enbytiousmusic](https://www.instagram.com/enbytiousmusic)). That would make me really happy!
+
+- [PETA](https://action.peta.de/page/184137/donate/) 
+- [FOUR PAWS](https://www.four-paws.org)
+- [UNICEF](https://www.unicef.org)
+
+Or watch the documentary [**Dominion**](https://www.dominionmovement.com/watch) (free to stream) that would mean the world to me!
+
 ## Two modes
 
 On startup you pick the project type (later via *File → New project …*):
