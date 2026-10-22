@@ -163,6 +163,23 @@ cargo run --release -- projekt.tcf    # open a project
 cargo test                            # tests (including real ffmpeg renders)
 ```
 
+## Prebuilt binaries (CI)
+
+GitHub Actions ([.github/workflows/build.yml](.github/workflows/build.yml)) tests and builds every
+push on Linux, Windows and macOS (universal binary for Apple Silicon and Intel). The archives can be
+downloaded from the run's **Artifacts** section.
+
+To publish a release, push a version tag – the archives are attached to a GitHub release automatically:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The archives contain the program only; ffmpeg and whisper.cpp still have to be installed (see above).
+The macOS binary is not signed: after downloading, run `xattr -d com.apple.quarantine textcutforge`
+once, or allow it under *System Settings → Privacy & Security*.
+
 ## Workflow
 
 1. Drag a video into the window. It lands on the main track and is transcribed and analyzed for silence.
