@@ -1,8 +1,8 @@
-//! Untertitel: Zeilen aus dem Transkript bilden, als transparente Bilder
-//! zeichnen und über eine ffconcat-Bildfolge ins Video einbrennen.
+//! Subtitles: build lines from the transcript, draw them as transparent images
+//! and burn them into the video via an ffconcat image sequence.
 //!
-//! Das Zeichnen passiert in Rust (ab_glyph), weil viele ffmpeg-Builds – auch
-//! das aktuelle Homebrew-Paket – keine Textfilter (libass/drawtext) enthalten.
+//! Drawing happens in Rust (ab_glyph) because many ffmpeg builds - including
+//! the current Homebrew package - lack text filters (libass/drawtext).
 
 use crate::project::{Project, SubPosition, SubtitleStyle, TokenKind};
 use crate::util::cache_dir;
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 // ---------------------------------------------------------------------------
-// Zeilen (Cues)
+// Lines (cues)
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug)]
@@ -37,8 +37,8 @@ impl Cue {
     }
 }
 
-/// Untertitelzeilen der Hauptspur in Timeline-Zeit (nach allen Schnitten).
-/// Neue Zeile bei Satzende, Pausen > 0,8 s oder wenn `max_chars` erreicht ist.
+/// Subtitle lines of the main track in timeline time (after all cuts).
+/// New line at sentence end, pauses > 0.8 s or when `max_chars` is reached.
 pub fn cues(p: &Project, max_chars: usize) -> Vec<Cue> {
     let fps = p.fps;
     let max_chars = max_chars.max(8);
@@ -83,7 +83,7 @@ pub fn cues(p: &Project, max_chars: usize) -> Vec<Cue> {
     }
     flush(&mut cur, &mut out);
 
-    // Kurz stehen lassen, damit man zu Ende lesen kann – aber nie in die nächste Zeile.
+    // Keep briefly on screen so it can be read to the end - but never into the next line.
     for i in 0..out.len() {
         let limit = out.get(i + 1).map(|n| n.start - 0.04).unwrap_or(f64::INFINITY);
         out[i].end = (out[i].end + 0.4).min(limit).max(out[i].end);
@@ -92,10 +92,10 @@ pub fn cues(p: &Project, max_chars: usize) -> Vec<Cue> {
 }
 
 // ---------------------------------------------------------------------------
-// Schriften
+// Fonts
 // ---------------------------------------------------------------------------
 
-/// Gut lesbare Schriften, die auf dem System vorhanden sind: (Name, Datei).
+/// Highly legible fonts available on the system: (name, file).
 pub fn available_fonts() -> Vec<(String, PathBuf)> {
     let candidates: &[(&str, &[&str])] = &[
         (
@@ -139,18 +139,18 @@ fn load_font(path: &Path) -> Result<Arc<FontVec>> {
     if let Some(f) = cache.lock().unwrap().get(path) {
         return Ok(f.clone());
     }
-    let bytes = std::fs::read(path).with_context(|| format!("Schrift nicht lesbar: {}", path.display()))?;
-    let font = Arc::new(FontVec::try_from_vec_and_index(bytes, 0).map_err(|_| anyhow!("Ungültige Schriftdatei: {}", path.display()))?);
+    let bytes = std::fs::read(path).with_context(|| format!("Font not readable: {}", path.display()))?;
+    let font = Arc::new(FontVec::try_from_vec_and_index(bytes, 0).map_err(|_| anyhow!("Invalid font file: {}", path.display()))?);
     cache.lock().unwrap().insert(path.to_path_buf(), font.clone());
     Ok(font)
 }
 
 // ---------------------------------------------------------------------------
-// Zeichnen
+// Drawing
 // ---------------------------------------------------------------------------
 
-/// Untertitel werden in ein Band voller Breite gezeichnet, das an einer
-/// festen Stelle über das Video gelegt wird.
+/// Subtitles are drawn into a full-width band that is overlaid on the
+/// video at a fixed position.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Geometry {
     pub font_px: f32,
@@ -158,7 +158,7 @@ pub struct Geometry {
     pub pad: f32,
     pub band_w: u32,
     pub band_h: u32,
-    /// Oberkante des Bands im Video.
+    /// Top edge of the band in the video.
     pub y: u32,
 }
 
@@ -177,7 +177,7 @@ pub fn geometry(style: &SubtitleStyle, w: u32, h: u32) -> Geometry {
     Geometry { font_px, outline, pad, band_w: w, band_h, y: y.round() as u32 }
 }
 
-/// Gesetzte Zeilen: (Wortindex, Glyphen) je Zeile plus Zeilenbreiten.
+/// Laid-out lines: (word index, glyphs) per line plus line widths.
 struct Layout {
     lines: Vec<(Vec<(usize, Vec<Glyph>)>, f32)>,
     px: f32,
@@ -202,7 +202,7 @@ fn layout(font: &FontVec, style: &SubtitleStyle, geo: &Geometry, words: &[String
             }
             x
         };
-        // Zeilen umbrechen (gierig)
+        // Wrap lines (greedy)
         let mut lines: Vec<(Vec<usize>, f32)> = vec![(Vec::new(), 0.0)];
         for (i, w) in words.iter().enumerate() {
             let ww = width(w);
@@ -217,7 +217,7 @@ fn layout(font: &FontVec, style: &SubtitleStyle, geo: &Geometry, words: &[String
         }
         let fits = lines.len() <= style.max_lines.max(1) && lines.iter().all(|(_, w)| *w <= max_w);
         if fits || px < 10.0 {
-            // Glyphen positionieren
+            // Position glyphs
             let line_h = px * 1.22;
             let block_h = lines.len() as f32 * line_h;
             let top = match style.position {
@@ -256,7 +256,7 @@ fn layout(font: &FontVec, style: &SubtitleStyle, geo: &Geometry, words: &[String
     }
 }
 
-/// Zeichnet einen Untertitel als RGBA-Bild (Band). `active`: hervorgehobenes Wort.
+/// Draws a subtitle as an RGBA image (band). `active`: highlighted word.
 pub fn rasterize(font: &FontVec, style: &SubtitleStyle, geo: &Geometry, words: &[String], active: Option<usize>) -> Vec<u8> {
     let (bw, bh) = (geo.band_w as usize, geo.band_h as usize);
     let mut rgba = vec![0u8; bw * bh * 4];
@@ -293,12 +293,12 @@ pub fn rasterize(font: &FontVec, style: &SubtitleStyle, geo: &Geometry, words: &
     if x1 < x0 {
         return rgba;
     }
-    // Bearbeitungsbereich: Textbox plus Kontur/Box-Rand
+    // Working area: text box plus outline/box margin
     let grow = (geo.outline.ceil() as usize) + (lay.px * 0.4) as usize + 2;
     let (rx0, ry0) = (x0.saturating_sub(grow), y0.saturating_sub(grow));
     let (rx1, ry1) = ((x1 + grow).min(bw - 1), (y1 + grow).min(bh - 1));
 
-    // Kontur: Abdeckung um `outline` Pixel ausdehnen (separierbares Maximum)
+    // Outline: dilate coverage by `outline` pixels (separable maximum)
     let r = geo.outline.round() as usize;
     let mut outline = vec![0f32; bw * bh];
     if r > 0 {
@@ -317,7 +317,7 @@ pub fn rasterize(font: &FontVec, style: &SubtitleStyle, geo: &Geometry, words: &
         }
     }
 
-    // Hintergrundbox je Zeile (abgerundet)
+    // Background box per line (rounded)
     let mut boxes: Vec<(f32, f32, f32, f32)> = Vec::new();
     if style.box_bg {
         let line_h = lay.px * 1.22;
@@ -360,7 +360,7 @@ pub fn rasterize(font: &FontVec, style: &SubtitleStyle, geo: &Geometry, words: &
     for y in by0..=by1 {
         for x in bx0..=bx1 {
             let i = y * bw + x;
-            // „Über“-Komposition mit unmultipliziertem Alpha
+            // "Over" compositing with unpremultiplied alpha
             let mut acc = [0f32; 3];
             let mut a = 0f32;
             let mut over = |c: [f32; 3], sa: f32| {
@@ -415,7 +415,7 @@ fn hash_of(parts: &impl Hash) -> u64 {
     h.finish()
 }
 
-/// Bild für einen Untertitel (zwischengespeichert).
+/// Image for a subtitle (cached).
 fn cue_image(font_file: &Path, style: &SubtitleStyle, geo: &Geometry, words: &[String], active: Option<usize>) -> Result<PathBuf> {
     let style_key = serde_json::to_string(style).unwrap_or_default();
     let key = hash_of(&(
@@ -439,18 +439,18 @@ fn cue_image(font_file: &Path, style: &SubtitleStyle, geo: &Geometry, words: &[S
 }
 
 // ---------------------------------------------------------------------------
-// Einbrennen
+// Burn-in
 // ---------------------------------------------------------------------------
 
-/// ffmpeg-Eingabe mit den Untertitelbildern für einen Timeline-Ausschnitt.
+/// ffmpeg input with the subtitle images for a timeline range.
 pub struct Overlay {
-    /// ffconcat-Liste (Bild + Dauer, beginnend bei `from`).
+    /// ffconcat list (image + duration, starting at `from`).
     pub list: PathBuf,
-    /// Oberkante des Untertitel-Bands im Video.
+    /// Top edge of the subtitle band in the video.
     pub y: u32,
 }
 
-/// Bildfolge der Untertitel für `[from, to)`; `None`, wenn nichts einzubrennen ist.
+/// Subtitle image sequence for `[from, to)`; `None` if there is nothing to burn in.
 pub fn overlay(p: &Project, w: u32, h: u32, from: f64, to: f64) -> Result<Option<Overlay>> {
     let style = &p.subtitles;
     if !style.burn_in {
@@ -461,10 +461,10 @@ pub fn overlay(p: &Project, w: u32, h: u32, from: f64, to: f64) -> Result<Option
     if visible.is_empty() {
         return Ok(None);
     }
-    let font_file = font_path(style).ok_or_else(|| anyhow!("Keine Schrift für Untertitel gefunden"))?;
+    let font_file = font_path(style).ok_or_else(|| anyhow!("No font found for subtitles"))?;
     let geo = geometry(style, w, h);
 
-    // (Start, Ende, Bild) in Timeline-Zeit
+    // (start, end, image) in timeline time
     let mut events: Vec<(f64, f64, PathBuf)> = Vec::new();
     for cue in visible {
         let words: Vec<String> =
@@ -483,13 +483,13 @@ pub fn overlay(p: &Project, w: u32, h: u32, from: f64, to: f64) -> Result<Option
     }
     let blank = cue_image(&font_file, style, &geo, &[], None)?;
 
-    // Liste relativ zu `from` (Bildwechsel liegen exakt auf den Zeitpunkten).
+    // List relative to `from` (image changes land exactly on the timestamps).
     let total = to - from;
     let quote = |p: &Path| format!("'{}'", p.to_string_lossy().replace('\'', "'\\''"));
     let mut list = String::from("ffconcat version 1.0\n");
     let mut t = 0.0f64;
     let push = |list: &mut String, path: &Path, d: f64| {
-        // framerate 1000: sonst liest ffmpeg Einzelbilder mit 25 fps und rundet die Zeiten auf 40 ms.
+        // framerate 1000: otherwise ffmpeg reads still images at 25 fps and rounds the times to 40 ms.
         list.push_str(&format!("file {}\noption framerate 1000\nduration {d:.6}\n", quote(path)));
     };
     for (s, e, img) in &events {
@@ -552,14 +552,14 @@ mod tests {
             ("Welt.", 0.5, 0.9),
             ("Das", 1.0, 1.2),
             ("ist", 1.3, 1.5),
-            ("ein", 3.0, 3.2), // Pause > 0,8 s davor
+            ("ein", 3.0, 3.2), // pause > 0.8 s before
             ("Test", 3.3, 3.6),
         ]);
         let c = cues(&p, 42);
         let texts: Vec<String> = c.iter().map(|c| c.text()).collect();
         assert_eq!(texts, vec!["Hallo Welt.", "Das ist", "ein Test"]);
-        assert!(c[0].end <= c[1].start - 0.04 + 1e-9, "nicht überlappend");
-        assert!((c[2].end - 4.0).abs() < 1e-9, "Ende + 0,4 s Lesezeit");
+        assert!(c[0].end <= c[1].start - 0.04 + 1e-9, "not overlapping");
+        assert!((c[2].end - 4.0).abs() < 1e-9, "end + 0.4 s reading time");
         let short = cues(&p, 10);
         assert!(short.iter().all(|c| c.text().chars().count() <= 10), "{:?}", short.iter().map(|c| c.text()).collect::<Vec<_>>());
     }
@@ -570,10 +570,10 @@ mod tests {
         p.set_tokens_deleted(c, 1, 1, true);
         let cs = cues(&p, 42);
         assert_eq!(cs[0].text(), "Eins drei.");
-        assert!(cs[0].words[1].start < 1.1, "„drei.“ rückt nach vorn: {}", cs[0].words[1].start);
+        assert!(cs[0].words[1].start < 1.1, "\"drei.\" moves forward: {}", cs[0].words[1].start);
     }
 
-    /// Echtes Einbrennen mit ffmpeg: Text erscheint genau während seiner Zeile.
+    /// Real burn-in with ffmpeg: text appears exactly during its line.
     #[test]
     fn burns_in_with_ffmpeg_frame_accurately() {
         use std::process::Command;
@@ -615,7 +615,7 @@ mod tests {
             loudnorm: false,
         };
         let g = crate::render::build(&p, &spec);
-        assert!(g.args.iter().any(|a| a == "concat"), "Untertitel-Eingabe vorhanden");
+        assert!(g.args.iter().any(|a| a == "concat"), "subtitle input present");
         let out = Command::new("ffmpeg")
             .args(["-v", "error"])
             .args(&g.args)
@@ -626,10 +626,10 @@ mod tests {
         let fs = 640 * 360 * 3;
         assert_eq!(out.stdout.len() / fs, 120);
         let white = |k: usize| out.stdout[k * fs..(k + 1) * fs].chunks(3).filter(|p| p.iter().all(|v| *v > 240)).count();
-        assert_eq!(white(29), 0, "0,967 s: noch kein Untertitel");
-        assert!(white(30) > 200, "1,000 s: Untertitel da");
-        assert!(white(68) > 200, "2,267 s: noch da (Lesezeit)");
-        assert_eq!(white(69), 0, "2,300 s: wieder weg");
+        assert_eq!(white(29), 0, "0.967 s: no subtitle yet");
+        assert!(white(30) > 200, "1.000 s: subtitle shown");
+        assert!(white(68) > 200, "2.267 s: still shown (reading time)");
+        assert_eq!(white(69), 0, "2.300 s: gone again");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -640,7 +640,7 @@ mod tests {
         assert!(g.y as f32 + g.band_h as f32 <= 1080.0 - 0.07 * 1080.0 + 1.0);
         s.position = SubPosition::Top;
         assert_eq!(geometry(&s, 1920, 1080).y, (0.07f32 * 1080.0).round() as u32);
-        // Relativ zur Höhe: 9:16 hat gleiche Größe in Prozent
+        // Relative to height: 9:16 has the same size in percent
         let v = geometry(&SubtitleStyle::default(), 1080, 1920);
         assert!((v.font_px / 1920.0 - g.font_px / 1080.0).abs() < 1e-4);
     }
@@ -648,7 +648,7 @@ mod tests {
     #[test]
     fn rasterizes_text_with_outline_and_highlight() {
         let Some(font_file) = font_path(&SubtitleStyle::default()) else {
-            eprintln!("keine Schrift – übersprungen");
+            eprintln!("no font - skipped");
             return;
         };
         let font = load_font(&font_file).unwrap();
@@ -661,20 +661,20 @@ mod tests {
             .flat_map(|y| (0..geo.band_w as usize).map(move |x| (x, y)))
             .filter(|&(x, y)| px(x, y)[3] > 250)
             .collect::<Vec<_>>();
-        assert!(opaque.len() > 200, "Text sichtbar");
+        assert!(opaque.len() > 200, "text visible");
         let white = opaque.iter().filter(|&&(x, y)| px(x, y)[..3] == [255, 255, 255]).count();
         let yellow = opaque.iter().filter(|&&(x, y)| px(x, y)[..3] == [255, 210, 40]).count();
         let black = opaque.iter().filter(|&&(x, y)| px(x, y)[..3] == [0, 0, 0]).count();
-        assert!(white > 30 && yellow > 30 && black > 30, "weiß {white}, gelb {yellow}, Kontur {black}");
-        // Gelbes Wort rechts vom weißen
+        assert!(white > 30 && yellow > 30 && black > 30, "white {white}, yellow {yellow}, outline {black}");
+        // Yellow word to the right of the white one
         let avg_x = |c: [u8; 3]| {
             let v: Vec<usize> = opaque.iter().filter(|&&(x, y)| px(x, y)[..3] == c).map(|&(x, _)| x).collect();
             v.iter().sum::<usize>() as f32 / v.len() as f32
         };
         assert!(avg_x([255, 210, 40]) > avg_x([255, 255, 255]));
-        // Box: halbtransparenter Hintergrund
+        // Box: semi-transparent background
         style.box_bg = true;
         let img = rasterize(&font, &style, &geo, &words, None);
-        assert!(img.chunks(4).any(|p| p[3] > 100 && p[3] < 200), "Box mit Deckkraft 0,6");
+        assert!(img.chunks(4).any(|p| p[3] > 100 && p[3] < 200), "box with opacity 0.6");
     }
 }

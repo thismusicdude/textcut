@@ -1,5 +1,5 @@
-//! Transkript-Editor: Jeder Clip wird als Text dargestellt. Markierte Wörter
-//! löschen schneidet das Video; Pausen erscheinen als ⏸-Marken.
+//! Transcript editor: every clip is shown as text. Deleting selected words
+//! cuts the video; pauses appear as ⏸ marks.
 
 use super::style;
 use crate::app::{App, Focus, Sel, TaskKind};
@@ -11,7 +11,7 @@ pub struct TranscriptUi {
     pub show_deleted: bool,
     pub follow: bool,
     pub search: String,
-    /// Clip, zu dem beim nächsten Zeichnen gescrollt wird.
+    /// Clip to scroll to on the next draw.
     pub scroll_to: Option<Id>,
     last_follow: Option<(Id, usize)>,
     press: Option<(Id, usize, usize)>,
@@ -23,7 +23,7 @@ impl Default for TranscriptUi {
     }
 }
 
-/// Ein klickbarer Textabschnitt: Zeichenbereich → Token-Bereich.
+/// A clickable text span: character range → token range.
 struct Span {
     chars: (usize, usize),
     first: usize,
@@ -52,71 +52,71 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
 fn toolbar(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
-        ui.heading(RichText::new("📝 Text-Schnitt").strong());
+        ui.heading(RichText::new("📝 Transcript").strong());
         ui.add_space(8.0);
         let silence_busy = app.tasks.iter().any(|t| matches!(t.kind, TaskKind::Silence(_)));
-        let btn = egui::Button::new(RichText::new("🔇 Stille automatisch entfernen").strong()).fill(style::ACCENT_DIM);
+        let btn = egui::Button::new(RichText::new("🔇 Remove silence automatically").strong()).fill(style::ACCENT_DIM);
         if ui
             .add_enabled(!silence_busy, btn)
-            .on_hover_text("Erkennt Pausen im Ton und schneidet sie aus allen Clips heraus.\nSchwelle/Mindestdauer/Rand in den Einstellungen.")
+            .on_hover_text("Detects pauses in the audio and cuts them out of all clips.\nThreshold/minimum duration/padding in Settings.")
             .clicked()
         {
             app.remove_silence_all();
         }
-        if ui.button("↺ Stille zurück").on_hover_text("Alle automatischen Stille-Schnitte rückgängig machen").clicked() {
+        if ui.button("↺ Restore silence").on_hover_text("Undo all automatic silence cuts").clicked() {
             let ids = app.project.clips.iter().map(|c| c.id).collect();
             app.restore_silence(ids);
         }
-        if ui.button("🗑 Füllwörter entfernen").on_hover_text(format!("Entfernt: {}", app.settings.fillers)).clicked() {
+        if ui.button("🗑 Remove filler words").on_hover_text(format!("Removes: {}", app.settings.fillers)).clicked() {
             app.remove_fillers_all();
         }
-        let subs_label = if app.project.subtitles.burn_in { "💬 Untertitel: an" } else { "💬 Untertitel" };
-        if ui.button(subs_label).on_hover_text("Text als Untertitel ins Video einbrennen").clicked() {
+        let subs_label = if app.project.subtitles.burn_in { "💬 Subtitles: on" } else { "💬 Subtitles" };
+        if ui.button(subs_label).on_hover_text("Burn text into the video as subtitles").clicked() {
             app.show_subtitles = true;
         }
         let tr = app.project.transition;
-        let label = if tr.enabled { format!("〰 Weiche Übergänge: {:.0} ms", tr.ms) } else { "〰 Weiche Übergänge: aus".into() };
+        let label = if tr.enabled { format!("〰 Smooth transitions: {:.0} ms", tr.ms) } else { "〰 Smooth transitions: off".into() };
         ui.menu_button(label, |ui| transition_settings(app, ui))
             .response
-            .on_hover_text("Ton an Schnittstellen sanft aus- und einblenden statt hart schneiden");
+            .on_hover_text("Fade audio out and in at cut points instead of hard cuts");
     });
     ui.horizontal(|ui| {
         let r = ui.add(
             egui::TextEdit::singleline(&mut app.transcript_ui.search)
-                .hint_text("🔍 Wort oder Phrase suchen …")
+                .hint_text("🔍 Search word or phrase …")
                 .desired_width(200.0),
         );
         let phrase = app.transcript_ui.search.trim().to_string();
         let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         if ui
-            .add_enabled(!phrase.is_empty(), egui::Button::new("✂ Alle Treffer löschen"))
+            .add_enabled(!phrase.is_empty(), egui::Button::new("✂ Delete all matches"))
             .clicked()
             || (enter && !phrase.is_empty())
         {
             app.delete_phrase_all(&phrase);
         }
         ui.separator();
-        ui.checkbox(&mut app.transcript_ui.show_deleted, "Gelöschtes anzeigen");
-        ui.checkbox(&mut app.transcript_ui.follow, "Mitlaufen");
+        ui.checkbox(&mut app.transcript_ui.show_deleted, "Show deleted");
+        ui.checkbox(&mut app.transcript_ui.follow, "Follow playhead");
     });
     if let Some(sel) = &app.sel {
         let (a, b) = sel.range();
         let clip = sel.clip;
         ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("Auswahl: {} Element(e)", b - a + 1)).color(style::ACCENT));
-            if ui.button("✂ Löschen (Entf)").clicked() {
+            ui.label(RichText::new(format!("Selection: {} item(s)", b - a + 1)).color(style::ACCENT));
+            if ui.button("✂ Delete (Del)").clicked() {
                 app.set_words_deleted(clip, a, b, true);
             }
-            if ui.button("↺ Wiederherstellen").clicked() {
+            if ui.button("↺ Restore").clicked() {
                 app.set_words_deleted(clip, a, b, false);
             }
-            if ui.button("Auswahl aufheben (Esc)").clicked() {
+            if ui.button("Clear selection (Esc)").clicked() {
                 app.sel = None;
             }
         });
     } else {
         ui.label(
-            RichText::new("Tipp: Wörter anklicken/ziehen zum Markieren, Entf zum Herausschneiden. Erneut Entf stellt wieder her. Klick springt zur Stelle. Gelb unterstrichen = unsicher (kaum Ton, evtl. von Whisper erfunden).")
+            RichText::new("Tip: click/drag words to select, Delete to cut them out. Delete again restores. Click jumps to that position. Yellow underline = uncertain (barely any audio, possibly invented by Whisper).")
                 .small()
                 .weak(),
         );
@@ -126,20 +126,20 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
 fn empty_state(app: &mut App, ui: &mut egui::Ui) {
     ui.vertical_centered(|ui| {
         ui.add_space(60.0);
-        ui.label(RichText::new("Noch keine Clips").size(22.0).strong());
+        ui.label(RichText::new("No clips yet").size(22.0).strong());
         ui.add_space(6.0);
-        let what = if app.project.is_audio() { "Audiodateien" } else { "Videos" };
+        let what = if app.project.is_audio() { "audio files" } else { "videos" };
         ui.label(format!(
-            "Ziehe {what} hierher oder importiere sie. Sie werden automatisch transkribiert,\nund du kannst sie dann wie ein Textdokument schneiden."
+            "Drag {what} here or import them. They are transcribed automatically,\nand you can then edit them like a text document."
         ));
         ui.add_space(12.0);
-        if ui.button(RichText::new("📂 Medien importieren …").size(16.0)).clicked() {
+        if ui.button(RichText::new("📂 Import media …").size(16.0)).clicked() {
             app.import_dialog(crate::app::Placement::Main);
         }
         if let Err(e) = app.settings.whisper_ready() {
             ui.add_space(16.0);
-            ui.colored_label(style::WARN, format!("⚠ Transkription noch nicht eingerichtet: {e}"));
-            if ui.button("⚙ Einstellungen öffnen").clicked() {
+            ui.colored_label(style::WARN, format!("⚠ Transcription not set up yet: {e}"));
+            if ui.button("⚙ Open settings").clicked() {
                 app.show_settings = true;
             }
         }
@@ -158,7 +158,7 @@ fn clip_block(app: &mut App, ui: &mut egui::Ui, clip_id: Id) {
     let transcribing = app.task_running(TaskKind::Transcribe(clip.source));
     let selected = app.selected_clip == Some(clip_id);
 
-    // Kopfzeile
+    // Header row
     let header = ui.horizontal(|ui| {
         let chip_color = style::track_color(is_main, app.project.track(clip.track).map(|t| t.kind));
         ui.label(RichText::new(format!(" {track} ")).background_color(chip_color).color(Color32::WHITE).strong());
@@ -171,14 +171,14 @@ fn clip_block(app: &mut App, ui: &mut egui::Ui, clip_id: Id) {
         ui.label(RichText::new(format!("{} – {}", fmt_time(clip.start), fmt_time(clip.end(fps)))).weak().small());
         let removed = clip.removed_time(fps);
         if removed > 0.05 {
-            ui.label(RichText::new(format!("−{removed:.1} s geschnitten")).color(style::CUT).small());
+            ui.label(RichText::new(format!("−{removed:.1} s cut")).color(style::CUT).small());
         }
         if transcribing {
             ui.spinner();
             let p = app.tasks.iter().find(|t| t.kind == TaskKind::Transcribe(clip.source)).map(|t| t.progress).unwrap_or(0.0);
-            ui.label(RichText::new(format!("Transkribiere … {:.0} %", p * 100.0)).small());
+            ui.label(RichText::new(format!("Transcribing … {:.0} %", p * 100.0)).small());
         } else if !has_transcript && has_audio {
-            if ui.small_button("📝 Transkribieren").clicked() {
+            if ui.small_button("📝 Transcribe").clicked() {
                 app.start_transcription(clip.source);
             }
         }
@@ -191,17 +191,17 @@ fn clip_block(app: &mut App, ui: &mut egui::Ui, clip_id: Id) {
     let tokens = app.project.clip_tokens(&clip);
     if tokens.is_empty() {
         let msg = if !has_audio {
-            "Kein Ton – kein Transkript möglich."
+            "No audio – no transcript possible."
         } else if transcribing {
-            "Transkript wird erstellt …"
+            "Creating transcript …"
         } else {
-            "Noch kein Transkript. Klicke „Transkribieren“ (whisper.cpp)."
+            "No transcript yet. Click \"Transcribe\" (whisper.cpp)."
         };
         ui.label(RichText::new(msg).italics().weak());
         return;
     }
 
-    // Aktuelles Wort unter dem Abspielkopf
+    // Current word under the playhead
     let current_src = (app.playhead >= clip.start && app.playhead < clip.end(fps))
         .then(|| clip.local_to_source(app.playhead - clip.start, fps));
     let sel_range = app.sel.as_ref().filter(|s| s.clip == clip_id).map(|s| s.range());
@@ -219,7 +219,7 @@ fn clip_block(app: &mut App, ui: &mut egui::Ui, clip_id: Id) {
         let tok = &tokens[i];
         let kept = !clip.is_token_deleted(tok, fps);
         if !kept && !show_deleted {
-            // Zusammenhängend gelöschte Wörter als ein ✂-Marker.
+            // Consecutive deleted words shown as a single ✂ marker.
             let first = i;
             while i + 1 < tokens.len() && clip.is_token_deleted(&tokens[i + 1], fps) {
                 i += 1;
@@ -287,7 +287,7 @@ fn clip_block(app: &mut App, ui: &mut egui::Ui, clip_id: Id) {
     }
     ui.painter().galley(origin, galley.clone(), visuals.text_color());
 
-    // Mitlaufen während der Wiedergabe
+    // Follow during playback
     if let Some((c, tok)) = current_char {
         if app.transcript_ui.follow && app.is_playing() && app.transcript_ui.last_follow != Some((clip_id, tok)) {
             let r = galley.pos_from_ccursor(egui::text::CCursor::new(c)).translate(origin.to_vec2());
@@ -296,7 +296,7 @@ fn clip_block(app: &mut App, ui: &mut egui::Ui, clip_id: Id) {
         }
     }
 
-    // Trefferprüfung Maus → Span
+    // Hit test mouse → span
     let span_at = |pos: egui::Pos2| -> Option<usize> {
         let cursor = galley.cursor_from_pos(pos - origin);
         let ci = cursor.ccursor.index;
@@ -355,26 +355,26 @@ fn clip_block(app: &mut App, ui: &mut egui::Ui, clip_id: Id) {
 
     resp.context_menu(|ui| {
         let Some(sel) = app.sel.as_ref().filter(|s| s.clip == clip_id) else {
-            ui.label("Erst Text markieren");
+            ui.label("Select text first");
             return;
         };
         let (a, b) = sel.range();
-        if ui.button("✂ Auswahl herausschneiden").clicked() {
+        if ui.button("✂ Cut out selection").clicked() {
             app.set_words_deleted(clip_id, a, b, true);
             ui.close_menu();
         }
-        if ui.button("↺ Auswahl wiederherstellen").clicked() {
+        if ui.button("↺ Restore selection").clicked() {
             app.set_words_deleted(clip_id, a, b, false);
             ui.close_menu();
         }
-        if ui.button("✂ Clip hier teilen").clicked() {
+        if ui.button("✂ Split clip here").clicked() {
             let t = app.project.source_to_timeline(&clip, tokens[a].range.start);
             app.selected_clip = Some(clip_id);
             app.seek(t);
             app.split_at_playhead();
             ui.close_menu();
         }
-        if ui.button("📋 Text kopieren").clicked() {
+        if ui.button("📋 Copy text").clicked() {
             let text: Vec<&str> =
                 tokens[a..=b].iter().filter(|t| t.kind == TokenKind::Word).map(|t| t.text.as_str()).collect();
             ui.ctx().copy_text(text.join(" "));
@@ -383,18 +383,18 @@ fn clip_block(app: &mut App, ui: &mut egui::Ui, clip_id: Id) {
     });
 }
 
-/// Einstellungen für weiche Übergänge an Schnittstellen (mit Kurvenvorschau).
+/// Settings for smooth transitions at cut points (with curve preview).
 pub fn transition_settings(app: &mut App, ui: &mut egui::Ui) {
     ui.set_min_width(300.0);
     let before = app.project.transition;
     let mut t = before;
-    ui.label(RichText::new("Weiche Übergänge an Schnitten").strong());
-    ui.label(RichText::new("Der Ton wird vor jedem Schnitt aus- und danach wieder eingeblendet.\nDas Bild bleibt ein harter Schnitt, die Länge ändert sich nicht.").small().weak());
+    ui.label(RichText::new("Smooth transitions at cuts").strong());
+    ui.label(RichText::new("Audio fades out before each cut and fades back in after it.\nThe picture stays a hard cut; the duration does not change.").small().weak());
     ui.add_space(4.0);
-    ui.checkbox(&mut t.enabled, "Aktiv");
+    ui.checkbox(&mut t.enabled, "Enabled");
     ui.add_enabled_ui(t.enabled, |ui| {
-        ui.add(egui::Slider::new(&mut t.ms, 5.0..=500.0).logarithmic(true).suffix(" ms").text("Länge"))
-            .on_hover_text("Gesamtlänge: je die Hälfte zum Aus- und Einblenden.\n20–60 ms: unhörbar weich · 100–300 ms: deutlich hörbar");
+        ui.add(egui::Slider::new(&mut t.ms, 5.0..=500.0).logarithmic(true).suffix(" ms").text("Length"))
+            .on_hover_text("Total length: half for fade-out, half for fade-in.\n20–60 ms: inaudibly smooth · 100–300 ms: clearly audible");
         ui.horizontal(|ui| {
             for ms in [20.0, 40.0, 80.0, 150.0, 300.0] {
                 if ui.small_button(format!("{ms:.0}")).clicked() {
@@ -402,21 +402,21 @@ pub fn transition_settings(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
         });
-        egui::ComboBox::from_label("Kurve").selected_text(t.curve.label()).width(220.0).show_ui(ui, |ui| {
+        egui::ComboBox::from_label("Curve").selected_text(t.curve.label()).width(220.0).show_ui(ui, |ui| {
             for c in FadeCurve::ALL {
                 ui.selectable_value(&mut t.curve, c, c.label());
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Anwenden auf:");
-            ui.checkbox(&mut t.text_cuts, "Text-Schnitte");
-            ui.checkbox(&mut t.silence_cuts, "Stille-Schnitte");
+            ui.label("Apply to:");
+            ui.checkbox(&mut t.text_cuts, "Text cuts");
+            ui.checkbox(&mut t.silence_cuts, "Silence cuts");
         });
         curve_preview(ui, &t);
     });
 
     if t != before {
-        // Eine Undo-Stufe pro Geste (z.B. ganzer Slider-Zug).
+        // One undo step per gesture (e.g. an entire slider drag).
         if !app.inspector_editing {
             let mut snapshot = app.project.clone();
             snapshot.transition = before;
@@ -429,13 +429,13 @@ pub fn transition_settings(app: &mut App, ui: &mut egui::Ui) {
     }
 }
 
-/// Zeigt den Lautstärkeverlauf um einen Schnitt herum.
+/// Shows the volume envelope around a cut.
 fn curve_preview(ui: &mut egui::Ui, t: &crate::project::CutTransition) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width().max(280.0), 70.0), Sense::hover());
     let p = ui.painter_at(rect);
     p.rect_filled(rect, 4.0, Color32::from_gray(30));
     let plot = rect.shrink2(egui::vec2(8.0, 10.0));
-    // Sichtbereich: ±(Länge) um den Schnitt
+    // Visible range: ±(length) around the cut
     let half = t.ms as f64 / 2.0;
     let span = half * 2.0;
     let x_of = |ms: f64| plot.left() + ((ms + span) / (2.0 * span)) as f32 * plot.width();
@@ -450,7 +450,7 @@ fn curve_preview(ui: &mut egui::Ui, t: &crate::project::CutTransition) {
     p.line_segment([egui::pos2(x_of(0.0), rect.top()), egui::pos2(x_of(0.0), rect.bottom())], Stroke::new(1.5, style::CUT));
     p.add(egui::Shape::line(pts, Stroke::new(2.0, style::ACCENT)));
     let font = FontId::proportional(10.0);
-    p.text(egui::pos2(x_of(0.0) + 3.0, rect.top() + 2.0), egui::Align2::LEFT_TOP, "✂ Schnitt", font.clone(), style::CUT);
+    p.text(egui::pos2(x_of(0.0) + 3.0, rect.top() + 2.0), egui::Align2::LEFT_TOP, "✂ Cut", font.clone(), style::CUT);
     p.text(rect.left_bottom() + egui::vec2(4.0, -2.0), egui::Align2::LEFT_BOTTOM, format!("−{span:.0} ms"), font.clone(), Color32::GRAY);
     p.text(rect.right_bottom() + egui::vec2(-4.0, -2.0), egui::Align2::RIGHT_BOTTOM, format!("+{span:.0} ms"), font, Color32::GRAY);
 }

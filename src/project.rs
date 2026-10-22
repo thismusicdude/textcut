@@ -1,11 +1,11 @@
-//! Datenmodell und Schnittlogik.
+//! Data model and cutting logic.
 //!
-//! Grundidee: Ein Clip referenziert einen Quellbereich `[src_in, src_out)` einer
-//! Mediendatei. Text- und Stille-Schnitte werden als `Cut`s im Quellzeitbereich
-//! gespeichert. Die tatsächlich abgespielten Bereiche („kept ranges“) ergeben
-//! sich aus Quellbereich minus Schnitte, gerastert auf das Frame-Raster des
-//! Projekts. Dadurch bleiben alle Schnitte nicht-destruktiv und jederzeit
-//! wiederherstellbar.
+//! Core idea: a clip references a source range `[src_in, src_out)` of a
+//! media file. Text and silence cuts are stored as `Cut`s in source time.
+//! The ranges actually played ("kept ranges") are the source range minus
+//! the cuts, snapped to the project's frame grid. This keeps all cuts
+//! non-destructive and restorable at any time.
+//!
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -13,11 +13,11 @@ use std::sync::Arc;
 
 pub type Id = u64;
 
-/// Pausen ab dieser Länge erscheinen als eigenes Token im Transkript.
+/// Pauses at least this long appear as their own token in the transcript.
 pub const MIN_SILENCE_TOKEN: f64 = 0.3;
 
 // ---------------------------------------------------------------------------
-// Zeitbereiche
+// Time ranges
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -54,7 +54,7 @@ impl Range {
     }
 }
 
-/// `base` minus die Vereinigung aller `holes`.
+/// `base` minus the union of all `holes`.
 pub fn subtract(base: Range, holes: &[Range]) -> Vec<Range> {
     let mut holes: Vec<Range> = holes.iter().filter_map(|h| h.intersect(&base)).collect();
     holes.sort_by(|a, b| a.start.total_cmp(&b.start));
@@ -72,7 +72,7 @@ pub fn subtract(base: Range, holes: &[Range]) -> Vec<Range> {
     out
 }
 
-/// Vereinigt überlappende/angrenzende Bereiche.
+/// Merges overlapping/adjacent ranges.
 pub fn merge(mut ranges: Vec<Range>, join_gap: f64) -> Vec<Range> {
     ranges.sort_by(|a, b| a.start.total_cmp(&b.start));
     let mut out: Vec<Range> = Vec::with_capacity(ranges.len());
@@ -91,7 +91,7 @@ pub fn snap(t: f64, fps: u32) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// Medien
+// Media
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,8 +105,8 @@ pub struct Word {
     pub text: String,
     pub start: f64,
     pub end: f64,
-    /// Kern des Worts laut DTW (ohne Lücken zu den Nachbarn). Begrenzt beim
-    /// Löschen den Schnitt, damit Nachbarwörter nie angeschnitten werden.
+    /// Core of the word according to DTW (without gaps to its neighbors). Limits
+    /// the cut when deleting so neighboring words are never clipped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<(f64, f64)>,
 }
@@ -121,21 +121,21 @@ impl Word {
 pub struct Transcript {
     pub language: String,
     pub words: Vec<Word>,
-    /// Spitzenpegel je Wort in dB (parallel zu `words`), aus der Wellenform.
+    /// Peak level per word in dB (parallel to `words`), from the waveform.
     #[serde(default)]
     pub levels_db: Vec<f32>,
-    /// Median der Wortpegel – Bezug für „unsicher“.
+    /// Median of the word levels - reference for "unsure".
     #[serde(default)]
     pub median_db: Option<f32>,
 }
 
-/// Wörter, die so viel leiser als die übrige Sprache sind, gelten als unsicher
-/// (Whisper erfindet bei Geräuschen/Stille gelegentlich Wörter).
+/// Words this much quieter than the rest of the speech are considered unsure
+/// (Whisper occasionally invents words during noise/silence).
 pub const UNCERTAIN_BELOW_MEDIAN_DB: f32 = 25.0;
 
 impl Transcript {
-    /// Misst den Spitzenpegel jedes Worts (auf den an den Pausen korrigierten
-    /// Zeiten). `peaks`: 100 Werte/s, √-komprimiert (siehe `media::waveform`).
+    /// Measures the peak level of each word (on the times corrected at the
+    /// pauses). `peaks`: 100 values/s, √-compressed (see `media::waveform`).
     pub fn measure_levels(&mut self, peaks: &[f32], silences: &[Range]) {
         if peaks.is_empty() {
             return;
@@ -180,10 +180,10 @@ pub struct MediaSource {
     pub has_audio: bool,
     #[serde(default)]
     pub transcript: Option<Transcript>,
-    /// Von ffmpeg erkannte Stille-Bereiche (Quellzeit).
+    /// Silence ranges detected by ffmpeg (source time).
     #[serde(default)]
     pub silences: Option<Vec<Range>>,
-    /// Pegelspitzen, 100 Werte pro Sekunde (0..1). Wird nicht gespeichert.
+    /// Peak levels, 100 values per second (0..1). Not saved.
     #[serde(skip)]
     pub waveform: Option<Arc<Vec<f32>>>,
 }
@@ -209,7 +209,7 @@ impl MediaSource {
 }
 
 // ---------------------------------------------------------------------------
-// Spuren & Clips
+// Tracks & clips
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -244,11 +244,11 @@ pub struct Cut {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FitMode {
-    /// Ganzes Bild sichtbar, ggf. schwarze Balken.
+    /// Whole image visible, black bars if needed.
     Fit,
-    /// Bildfüllend, Überstand wird abgeschnitten.
+    /// Fill the frame, overflow is cropped.
     Fill,
-    /// Freie Position/Größe (Bild-in-Bild).
+    /// Free position/size (picture-in-picture).
     Custom,
 }
 
@@ -264,13 +264,13 @@ pub enum PipPreset {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Transform {
     pub fit: FitMode,
-    /// Linke obere Ecke, normiert auf die Leinwand (0..1).
+    /// Top-left corner, normalized to the canvas (0..1).
     pub x: f32,
     pub y: f32,
-    /// Breite relativ zur Leinwandbreite.
+    /// Width relative to the canvas width.
     pub scale: f32,
     pub opacity: f32,
-    /// Rahmenbreite in Pixeln bezogen auf 1080p-Höhe.
+    /// Border width in pixels relative to 1080p height.
     pub border: f32,
     pub border_color: [u8; 3],
 }
@@ -286,7 +286,7 @@ pub struct Clip {
     pub id: Id,
     pub source: Id,
     pub track: Id,
-    /// Startzeit auf der Timeline.
+    /// Start time on the timeline.
     pub start: f64,
     pub src_in: f64,
     pub src_out: f64,
@@ -303,7 +303,7 @@ pub struct Clip {
 }
 
 impl Clip {
-    /// Tatsächlich abgespielte Quellbereiche, auf das Frame-Raster gerastert.
+    /// Source ranges actually played, snapped to the frame grid.
     pub fn kept(&self, fps: u32) -> Vec<Range> {
         let base = Range::new(self.src_in, self.src_out);
         let holes: Vec<Range> = self.cuts.iter().map(|c| c.range).collect();
@@ -324,7 +324,7 @@ impl Clip {
         self.start + self.duration(fps)
     }
 
-    /// (Timeline-Start, Quellbereich) für jedes abgespielte Stück.
+    /// (Timeline start, source range) for each played piece.
     pub fn segments(&self, fps: u32) -> Vec<(f64, Range)> {
         let mut t = self.start;
         self.kept(fps)
@@ -337,7 +337,7 @@ impl Clip {
             .collect()
     }
 
-    /// Lokale Clipzeit (0 = Clipanfang) → Quellzeit.
+    /// Local clip time (0 = clip start) → source time.
     pub fn local_to_source(&self, local: f64, fps: u32) -> f64 {
         let kept = self.kept(fps);
         let mut acc = 0.0;
@@ -350,8 +350,8 @@ impl Clip {
         kept.last().map(|r| r.end).unwrap_or(self.src_in)
     }
 
-    /// Quellzeit → lokale Clipzeit. Liegt die Zeit in einem Schnitt, wird der
-    /// Anfang des nächsten behaltenen Stücks geliefert.
+    /// Source time → local clip time. If the time lies inside a cut, the
+    /// start of the next kept piece is returned.
     pub fn source_to_local(&self, src: f64, fps: u32) -> f64 {
         let mut acc = 0.0;
         for r in self.kept(fps) {
@@ -366,17 +366,17 @@ impl Clip {
         acc
     }
 
-    /// Anteil eines Quellbereichs, der tatsächlich abgespielt wird (0..1).
+    /// Fraction of a source range that is actually played (0..1).
     pub fn kept_fraction(&self, r: Range, fps: u32) -> f64 {
         let r = if r.len() < 0.04 { Range::new(r.mid() - 0.02, r.mid() + 0.02) } else { r };
         let kept: f64 = self.kept(fps).iter().map(|k| k.overlap(&r)).sum();
         kept / r.len()
     }
 
-    /// Gilt ein Token als gelöscht (im Text durchgestrichen)? Maßgeblich ist der
-    /// Wortkern – genau der Bereich, den das Löschen schneidet. Die volle
-    /// Wortspanne enthält auch die Lücken zu den Nachbarn und bliebe sonst
-    /// zu großen Teilen „behalten“.
+    /// Is a token considered deleted (struck through in the text)? What counts
+    /// is the word core - exactly the range that deleting cuts. The full word
+    /// span also contains the gaps to the neighbors and would otherwise remain
+    /// largely "kept".
     pub fn is_token_deleted(&self, tok: &Token, fps: u32) -> bool {
         let r = tok.core.filter(|c| c.len() >= 0.02).unwrap_or(tok.range);
         self.kept_fraction(r, fps) < 0.5
@@ -391,7 +391,7 @@ impl Clip {
         self.normalize_cuts();
     }
 
-    /// Entfernt Schnitte (optional nur einer Art) innerhalb von `r`.
+    /// Removes cuts (optionally only of one kind) within `r`.
     pub fn remove_cuts(&mut self, r: Range, kind: Option<CutKind>) {
         let mut out = Vec::new();
         for c in &self.cuts {
@@ -421,8 +421,8 @@ impl Clip {
         self.cuts = out;
     }
 
-    /// Art des Schnitts, der eine Lücke zwischen zwei behaltenen Stücken
-    /// erzeugt. Text-Schnitte haben Vorrang vor Stille.
+    /// Kind of cut that creates a gap between two kept pieces.
+    /// Text cuts take precedence over silence.
     pub fn cut_kind_in(&self, gap: Range) -> CutKind {
         let probe = Range::new(gap.start - 1e-3, gap.end + 1e-3);
         let kinds: Vec<CutKind> = self.cuts.iter().filter(|c| c.range.overlap(&probe) > 0.0).map(|c| c.kind).collect();
@@ -435,10 +435,10 @@ impl Clip {
 }
 
 // ---------------------------------------------------------------------------
-// Weiche Übergänge an Schnittstellen
+// Smooth transitions at cut points
 // ---------------------------------------------------------------------------
 
-/// Form der Aus-/Einblendung. `x` läuft von 0 (Schnittstelle) bis 1 (volle Lautstärke).
+/// Shape of the fade out/in. `x` runs from 0 (cut point) to 1 (full volume).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FadeCurve {
     Linear,
@@ -455,14 +455,14 @@ impl FadeCurve {
     pub fn label(self) -> &'static str {
         match self {
             FadeCurve::Linear => "Linear",
-            FadeCurve::Sine => "Sinus (weich, empfohlen)",
-            FadeCurve::SCurve => "S-Kurve (sanfter Start & Ende)",
-            FadeCurve::Fast => "Schnell (Logarithmisch)",
-            FadeCurve::Slow => "Langsam (Exponentiell)",
+            FadeCurve::Sine => "Sine (smooth, recommended)",
+            FadeCurve::SCurve => "S-curve (gentle start & end)",
+            FadeCurve::Fast => "Fast (logarithmic)",
+            FadeCurve::Slow => "Slow (exponential)",
         }
     }
 
-    /// Verstärkung 0..1 für x in 0..1.
+    /// Gain 0..1 for x in 0..1.
     pub fn eval(self, x: f64) -> f64 {
         let x = x.clamp(0.0, 1.0);
         match self {
@@ -474,7 +474,7 @@ impl FadeCurve {
         }
     }
 
-    /// Passende Kurve des ffmpeg-Filters `afade` (Ausblenden spiegelt sie).
+    /// Matching curve of the ffmpeg filter `afade` (fade-out mirrors it).
     pub fn afade_curve(self) -> &'static str {
         match self {
             FadeCurve::Linear => "tri",
@@ -485,7 +485,7 @@ impl FadeCurve {
         }
     }
 
-    /// Dieselbe Kurve als ffmpeg-Ausdruck.
+    /// The same curve as an ffmpeg expression.
     pub fn expr(self, x: &str) -> String {
         match self {
             FadeCurve::Linear => format!("({x})"),
@@ -497,13 +497,13 @@ impl FadeCurve {
     }
 }
 
-/// Weiche Tonübergänge an Schnittstellen innerhalb eines Clips: Der Ton wird
-/// vor dem Schnitt aus- und danach wieder eingeblendet (Gesamtlänge `ms`).
+/// Smooth audio transitions at cut points within a clip: the audio fades
+/// out before the cut and back in after it (total length `ms`).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CutTransition {
     pub enabled: bool,
-    /// Gesamtlänge in Millisekunden (je Hälfte aus- bzw. einblenden).
+    /// Total length in milliseconds (half fade-out, half fade-in).
     pub ms: f32,
     pub curve: FadeCurve,
     pub text_cuts: bool,
@@ -528,38 +528,38 @@ impl CutTransition {
 }
 
 // ---------------------------------------------------------------------------
-// Übergänge zwischen Clips
+// Transitions between clips
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransitionStyle {
-    /// Bild löst sich ins nächste auf, Ton wird übergeblendet.
+    /// Picture dissolves into the next one, audio crossfades.
     #[default]
     Dissolve,
-    /// Ab- und Aufblende über Schwarz bzw. Stille.
+    /// Fade out and in through black or silence.
     DipToBlack,
 }
 
 impl TransitionStyle {
     pub fn label(self) -> &'static str {
         match self {
-            TransitionStyle::Dissolve => "Überblenden",
-            TransitionStyle::DipToBlack => "Über Schwarz / Stille",
+            TransitionStyle::Dissolve => "Dissolve",
+            TransitionStyle::DipToBlack => "Dip to black / silence",
         }
     }
 }
 
-/// Weiche Übergänge an Stellen, an denen zwei Clips auf derselben Spur
-/// direkt aneinanderstoßen.
+/// Smooth transitions where two clips on the same track
+/// directly adjoin each other.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ClipTransition {
     pub video: bool,
     pub audio: bool,
-    /// Gesamtlänge des Übergangs in Millisekunden.
+    /// Total length of the transition in milliseconds.
     pub ms: f32,
     pub style: TransitionStyle,
-    /// Kurve für den Ton (das Bild blendet linear).
+    /// Curve for the audio (the picture fades linearly).
     pub curve: FadeCurve,
 }
 
@@ -579,15 +579,15 @@ impl ClipTransition {
     }
 }
 
-/// Behandlung eines Clip-Rands durch einen Übergang.
+/// Treatment of a clip edge by a transition.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Edge {
-    /// So weit läuft der Clip über seinen Rand hinaus (Material vor In- bzw.
-    /// nach Out-Punkt, „Handle“).
+    /// How far the clip runs beyond its edge (material before the in point or
+    /// after the out point, "handle").
     pub extend: f64,
-    /// Länge der Bild-Blende (Deckkraft) an diesem Rand.
+    /// Length of the picture fade (opacity) at this edge.
     pub video_fade: f64,
-    /// Länge der Ton-Blende an diesem Rand.
+    /// Length of the audio fade at this edge.
     pub audio_fade: f64,
 }
 
@@ -605,7 +605,7 @@ pub struct ClipEdges {
 }
 
 // ---------------------------------------------------------------------------
-// Untertitel
+// Subtitles
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -616,31 +616,31 @@ pub enum SubPosition {
     Top,
 }
 
-/// Aussehen eingebrannter Untertitel. Größen relativ zur Videohöhe, damit sie
-/// in jeder Exportgröße gleich wirken.
+/// Appearance of burned-in subtitles. Sizes relative to the video height so
+/// they look the same at every export size.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SubtitleStyle {
-    /// In Vorschau und Video-Export einbrennen.
+    /// Burn in to preview and video export.
     pub burn_in: bool,
-    /// Schriftdatei (.ttf/.otf/.ttc); leer = Standardschrift des Systems.
+    /// Font file (.ttf/.otf/.ttc); empty = system default font.
     pub font: String,
-    /// Schriftgröße in % der Videohöhe.
+    /// Font size in % of the video height.
     pub size: f32,
     pub position: SubPosition,
-    /// Abstand zum Bildrand in % der Videohöhe.
+    /// Distance from the frame edge in % of the video height.
     pub margin: f32,
     pub color: [u8; 3],
-    /// Gerade gesprochenes Wort farbig hervorheben.
+    /// Highlight the currently spoken word in color.
     pub highlight: bool,
     pub highlight_color: [u8; 3],
-    /// Konturbreite in Pixeln bezogen auf 1080p.
+    /// Outline width in pixels relative to 1080p.
     pub outline: f32,
     pub outline_color: [u8; 3],
     pub box_bg: bool,
     pub box_opacity: f32,
     pub uppercase: bool,
-    /// Höchstens so viele Zeichen pro Untertitel.
+    /// At most this many characters per subtitle.
     pub max_chars: usize,
     pub max_lines: usize,
 }
@@ -668,7 +668,7 @@ impl Default for SubtitleStyle {
 }
 
 // ---------------------------------------------------------------------------
-// Transkript-Token (Wörter + Pausen) für den Texteditor
+// Transcript tokens (words + pauses) for the text editor
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -682,17 +682,17 @@ pub struct Token {
     pub kind: TokenKind,
     pub range: Range,
     pub text: String,
-    /// Kaum Ton unter dem Wort – vermutlich von Whisper erfunden.
+    /// Barely any audio under the word - probably invented by Whisper.
     pub uncertain: bool,
-    /// Wortkern (siehe `Word::core`).
+    /// Word core (see `Word::core`).
     pub core: Option<Range>,
 }
 
 // ---------------------------------------------------------------------------
-// Projekt
+// Project
 // ---------------------------------------------------------------------------
 
-/// Video-Projekt (mit Bild, Bild-in-Bild …) oder reines Audio-Projekt (Podcast, Voiceover).
+/// Video project (with picture, picture-in-picture …) or pure audio project (podcast, voiceover).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProjectMode {
     #[default]
@@ -708,7 +708,7 @@ pub struct Project {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
-    /// Leinwandgröße wird beim ersten Video automatisch übernommen.
+    /// Canvas size is taken from the first video automatically.
     #[serde(default)]
     pub canvas_auto: bool,
     pub media: Vec<MediaSource>,
@@ -734,10 +734,10 @@ impl Project {
         let audio = mode == ProjectMode::Audio;
         let mut p = Project {
             mode,
-            name: if audio { "Unbenanntes Audio-Projekt" } else { "Unbenanntes Projekt" }.into(),
+            name: if audio { "Untitled audio project" } else { "Untitled project" }.into(),
             width: 1920,
             height: 1080,
-            // Audio: 10-ms-Raster für feinere Schnitte.
+            // Audio: 10 ms grid for finer cuts.
             fps: if audio { 100 } else { 30 },
             canvas_auto: !audio,
             media: Vec::new(),
@@ -797,7 +797,7 @@ impl Project {
         self.tracks.iter_mut().find(|t| t.id == id)
     }
 
-    /// Videospuren in Kompositionsreihenfolge (V1 ganz unten zuerst).
+    /// Video tracks in compositing order (V1 at the bottom first).
     pub fn video_tracks(&self) -> Vec<&Track> {
         self.tracks.iter().filter(|t| t.kind == TrackKind::Video).collect()
     }
@@ -806,8 +806,8 @@ impl Project {
         self.tracks.iter().filter(|t| t.kind == TrackKind::Audio).collect()
     }
 
-    /// Hauptspur (V1 bzw. im Audio-Modus A1): magnetisch, Clips liegen
-    /// lückenlos hintereinander.
+    /// Main track (V1, or A1 in audio mode): magnetic, clips sit
+    /// back to back without gaps.
     pub fn main_track(&self) -> Id {
         let tracks = if self.is_audio() { self.audio_tracks() } else { self.video_tracks() };
         tracks.first().map(|t| t.id).unwrap_or(0)
@@ -842,7 +842,7 @@ impl Project {
         v
     }
 
-    /// Clips in „Dokument-Reihenfolge“: erst Hauptspur, dann übrige Spuren.
+    /// Clips in "document order": main track first, then the other tracks.
     pub fn clips_in_document_order(&self) -> Vec<Id> {
         let mut ids: Vec<Id> = Vec::new();
         let main = self.main_track();
@@ -855,7 +855,7 @@ impl Project {
         ids
     }
 
-    /// Schiebt die Clips der Hauptspur lückenlos zusammen (Ripple).
+    /// Closes gaps between the main track's clips (ripple).
     pub fn repack_main(&mut self) {
         let fps = self.fps;
         let main = self.main_track();
@@ -877,8 +877,8 @@ impl Project {
         self.clips.iter().map(|c| c.end(self.fps)).fold(0.0, f64::max)
     }
 
-    /// Fügt einen Clip für eine Quelle ein. Auf der Hauptspur wird angehängt,
-    /// auf anderen Spuren an `at` platziert.
+    /// Inserts a clip for a source. On the main track it is appended,
+    /// on other tracks it is placed at `at`.
     pub fn add_clip(&mut self, source: Id, track: Id, at: f64) -> Option<Id> {
         let media = self.media(source)?.clone();
         let track_kind = self.track(track)?.kind;
@@ -925,7 +925,7 @@ impl Project {
         Some(id)
     }
 
-    /// Positioniert einen Bild-in-Bild-Clip an einer Ecke/Mitte.
+    /// Positions a picture-in-picture clip at a corner/center.
     pub fn place_pip(&mut self, clip_id: Id, preset: PipPreset) {
         let canvas_aspect = self.width as f64 / self.height.max(1) as f64;
         let Some(clip) = self.clip(clip_id) else { return };
@@ -948,7 +948,7 @@ impl Project {
         t.y = y as f32;
     }
 
-    /// Teilt einen Clip an Timeline-Zeit `t`. Liefert die ID des neuen Clips.
+    /// Splits a clip at timeline time `t`. Returns the ID of the new clip.
     pub fn split_clip(&mut self, id: Id, t: f64) -> Option<Id> {
         let fps = self.fps;
         let frame = self.frame();
@@ -991,11 +991,11 @@ impl Project {
         Some(new_id)
     }
 
-    /// Übergänge an den Rändern eines Clips. Bei „Überblenden“ läuft der
-    /// vordere Clip mit Material nach seinem Out-Punkt weiter, der hintere
-    /// beginnt mit Material vor seinem In-Punkt – mittig um die Schnittstelle,
-    /// sodass sich die Timeline-Länge nicht ändert. Fehlt solches Material
-    /// (Dateianfang/-ende), wird stattdessen über Schwarz/Stille geblendet.
+    /// Transitions at the edges of a clip. With "Dissolve" the outgoing
+    /// clip continues with material after its out point, the incoming one
+    /// starts with material before its in point - centered on the cut point,
+    /// so the timeline length does not change. If such material is missing
+    /// (start/end of file), it fades through black/silence instead.
     pub fn clip_edges(&self, clip: &Clip) -> ClipEdges {
         let tr = self.clip_transition;
         let fps = self.fps;
@@ -1009,7 +1009,7 @@ impl Project {
         let touches = |a: &Clip, b: &Clip| (b.start - a.end(fps)).abs() < 0.5 / fps as f64;
         let half = (tr.ms as f64 / 2000.0).max(0.0);
         let frame = 1.0 / fps as f64;
-        // Handle-Länge für den Übergang a → b (auf ganze Frames abgerundet).
+        // Handle length for the transition a → b (rounded down to whole frames).
         let handle = |a: &Clip, b: &Clip| -> f64 {
             if tr.style != TransitionStyle::Dissolve {
                 return 0.0;
@@ -1025,8 +1025,8 @@ impl Project {
         let is_video = kind == TrackKind::Video;
         let make = |h: f64, is_start: bool| -> Edge {
             if h >= frame {
-                // Überblenden: beide Seiten laufen h weiter. Das Bild des oberen
-                // (hinteren) Clips blendet ein, der Ton beider Clips blendet über.
+                // Dissolve: both sides run on for h. The picture of the upper
+                // (later) clip fades in, the audio of both clips crossfades.
                 Edge { extend: h, video_fade: if is_start && is_video { 2.0 * h } else { 0.0 }, audio_fade: 2.0 * h }
             } else {
                 Edge { extend: 0.0, video_fade: if is_video { half } else { 0.0 }, audio_fade: half }
@@ -1041,8 +1041,8 @@ impl Project {
         edges
     }
 
-    /// Wie `Clip::segments`, aber inklusive der Übergangs-Handles; direkt
-    /// aneinander anschließende Stücke werden zusammengefasst.
+    /// Like `Clip::segments`, but including the transition handles; directly
+    /// adjoining pieces are merged.
     pub fn segments_with_edges(&self, clip: &Clip, edges: &ClipEdges) -> Vec<(f64, Range)> {
         let mut segs = clip.segments(self.fps);
         if segs.is_empty() {
@@ -1066,16 +1066,16 @@ impl Project {
         merged
     }
 
-    /// Quellzeit → Timeline-Zeit für einen Clip.
+    /// Source time → timeline time for a clip.
     pub fn source_to_timeline(&self, clip: &Clip, src: f64) -> f64 {
         clip.start + clip.source_to_local(src, self.fps)
     }
 
     // -----------------------------------------------------------------------
-    // Text-basierter Schnitt
+    // Text-based editing
     // -----------------------------------------------------------------------
 
-    /// Wörter und Pausen eines Clips in zeitlicher Reihenfolge.
+    /// Words and pauses of a clip in chronological order.
     pub fn clip_tokens(&self, clip: &Clip) -> Vec<Token> {
         let Some(src) = self.media(clip.source) else { return Vec::new() };
         let clip_range = Range::new(clip.src_in, clip.src_out);
@@ -1091,7 +1091,7 @@ impl Project {
         let silences: Vec<Range> = match silences {
             Some(s) => s,
             None => {
-                // Ohne Stille-Analyse: große Lücken zwischen Wörtern als Pausen zeigen.
+                // Without silence analysis: show large gaps between words as pauses.
                 let mut gaps = Vec::new();
                 for pair in tokens.windows(2) {
                     let g = Range::new(pair[0].range.end, pair[1].range.start);
@@ -1119,8 +1119,8 @@ impl Project {
         tokens
     }
 
-    /// Schnittbereich für die Token `first..=last`: vom Anfang des ersten bis
-    /// zum Anfang des folgenden Tokens, damit die Lücke danach mit verschwindet.
+    /// Cut range for tokens `first..=last`: from the start of the first to the
+    /// start of the following token, so the gap after it disappears too.
     pub fn token_cut_range(clip: &Clip, tokens: &[Token], first: usize, last: usize) -> Range {
         let (first, last) = (first.min(last), first.max(last));
         let start = tokens[first..=last].iter().map(|t| t.range.start).fold(f64::INFINITY, f64::min);
@@ -1133,10 +1133,10 @@ impl Project {
         Range::new(start.max(clip.src_in), end.min(clip.src_out))
     }
 
-    /// Schnittbereich zum *Löschen*: wie `token_cut_range`, lässt aber zu
-    /// benachbarten Wörtern einen kleinen Puffer aus der Lücke stehen. So blendet
-    /// der weiche Übergang in der Stille ein/aus und schluckt keine leisen
-    /// Wortanfänge („S“ in „Sphäre“) oder -enden.
+    /// Cut range for *deleting*: like `token_cut_range`, but leaves a small
+    /// buffer of the gap next to neighboring words. That way the smooth
+    /// transition fades in/out within the silence and doesn't swallow quiet
+    /// word onsets ("S" in "Sphäre") or endings.
     pub fn token_delete_range(clip: &Clip, tokens: &[Token], first: usize, last: usize) -> Range {
         const GUARD_BEFORE: f64 = 0.02;
         const GUARD_AFTER: f64 = 0.04;
@@ -1146,18 +1146,18 @@ impl Project {
         let mut start = r.start;
         let mut end = r.end;
         if is_word(a.checked_sub(1)) {
-            // Nicht vor dem Kern des ersten gelöschten Worts beginnen.
+            // Don't start before the core of the first deleted word.
             start = (start + GUARD_BEFORE).max(tokens[a].core.map_or(f64::MIN, |c| c.start));
         }
         if is_word(Some(b + 1)) {
-            // Nicht über den Kern des letzten gelöschten Worts hinaus schneiden –
-            // leise Anlaute wie das „S“ in „Sphäre“ liegen sonst im Schnitt.
+            // Don't cut past the core of the last deleted word -
+            // quiet onsets like the "S" in "Sphäre" would otherwise fall into the cut.
             end = (end - GUARD_AFTER).min(tokens[b].core.map_or(f64::MAX, |c| c.end));
         }
         if end - start >= 0.05 { Range::new(start, end) } else { r }
     }
 
-    /// Löscht (bzw. stellt wieder her) die Token `first..=last` eines Clips.
+    /// Deletes (or restores) tokens `first..=last` of a clip.
     pub fn set_tokens_deleted(&mut self, clip_id: Id, first: usize, last: usize, deleted: bool) {
         let Some(clip) = self.clip(clip_id) else { return };
         let tokens = self.clip_tokens(clip);
@@ -1178,8 +1178,8 @@ impl Project {
         self.repack_main();
     }
 
-    /// Entfernt erkannte Stille aus einem Clip. `padding` Sekunden bleiben an
-    /// jedem Rand stehen, damit Schnitte natürlich klingen.
+    /// Removes detected silence from a clip. `padding` seconds remain at
+    /// each edge so cuts sound natural.
     pub fn apply_silence_removal(&mut self, clip_id: Id, padding: f64, min_len: f64) -> usize {
         let Some(clip) = self.clip(clip_id) else { return 0 };
         let Some(silences) = self.media(clip.source).and_then(|m| analyze_source(m).1) else { return 0 };
@@ -1204,8 +1204,8 @@ impl Project {
         count
     }
 
-    /// Schneidet Füllwörter („äh“, „ähm“ …) heraus. Unsichere Treffer (kaum Ton)
-    /// bleiben stehen. Liefert (entfernt, unsicher übersprungen).
+    /// Cuts out filler words ("äh", "ähm" …). Unsure matches (barely any audio)
+    /// are kept. Returns (removed, unsure skipped).
     pub fn remove_fillers(&mut self, clip_id: Id, fillers: &[String]) -> (usize, usize) {
         let Some(clip) = self.clip(clip_id) else { return (0, 0) };
         let tokens = self.clip_tokens(clip);
@@ -1223,7 +1223,7 @@ impl Project {
         (sure.len(), unsure.len())
     }
 
-    /// Löscht alle Vorkommen einer Wortfolge (Suchen & Löschen).
+    /// Deletes all occurrences of a phrase (find & delete).
     pub fn delete_phrase(&mut self, clip_id: Id, phrase: &str) -> usize {
         let needle: Vec<String> = phrase.split_whitespace().map(normalize_word).filter(|w| !w.is_empty()).collect();
         if needle.is_empty() {
@@ -1254,11 +1254,11 @@ impl Project {
     }
 }
 
-/// Wörter und Pausen einer Quelle, aufeinander abgestimmt:
-/// Wortzeiten werden an den Pausen korrigiert (`refine_words`), und Pausen,
-/// zwischen denen nur ein kurzes Geräusch ohne Wort liegt (Atmer, Schmatzen),
-/// werden zu einer Pause zusammengefasst. `None`, wenn noch keine Stille-Analyse
-/// vorliegt.
+/// Words and pauses of a source, aligned with each other:
+/// word times are corrected at the pauses (`refine_words`), and pauses
+/// separated only by a short noise without a word (breaths, lip smacks)
+/// are merged into one pause. `None` if no silence analysis is
+/// available yet.
 pub fn analyze_source(src: &MediaSource) -> (Vec<Word>, Option<Vec<Range>>) {
     let mut words = src.transcript.as_ref().map(|t| t.words.clone()).unwrap_or_default();
     let Some(raw) = &src.silences else {
@@ -1274,8 +1274,8 @@ pub fn analyze_source(src: &MediaSource) -> (Vec<Word>, Option<Vec<Range>>) {
     (words, Some(silences))
 }
 
-/// Geräusche zwischen zwei Pausen, die höchstens so lang sind und kein Wort
-/// enthalten, gelten als Teil der Pause.
+/// Noises between two pauses that are at most this long and contain no
+/// word count as part of the pause.
 pub const MAX_BREATH_GAP: f64 = 1.0;
 
 fn merge_wordless_gaps(silences: &[Range], words: &[Word], max_gap: f64) -> Vec<Range> {
@@ -1293,21 +1293,21 @@ fn merge_wordless_gaps(silences: &[Range], words: &[Word], max_gap: f64) -> Vec<
     out
 }
 
-/// Liegt (nennenswert) ein Wort im Bereich? `words` ist nach Start sortiert.
+/// Is there (significantly) a word in the range? `words` is sorted by start.
 fn has_word_in(words: &[Word], r: Range) -> bool {
     let idx = words.partition_point(|w| w.start < r.end);
     words[..idx].iter().rev().take(8).any(|w| w.range().overlap(&r) > 0.05 || (w.end - w.start < 0.05 && r.contains(w.start)))
 }
 
-/// Korrigiert ungenaue Whisper-Zeitstempel anhand der (sortierten) Pausen:
-/// 1. Kein Wort beginnt oder endet in einer Pause – die Grenze wandert an den
-///    Pausenrand (Whisper setzt Wortanfänge oft zu früh).
-/// 2. Kein Wort überspannt eine Pause – es kommt auf die Seite mit mehr Ton.
-/// 3. Wörter mit (fast) gleicher Startzeit werden gleichmäßig verteilt.
+/// Corrects inaccurate Whisper timestamps using the (sorted) pauses:
+/// 1. No word starts or ends inside a pause - the boundary moves to the
+///    pause edge (Whisper often places word starts too early).
+/// 2. No word spans a pause - it goes to the side with more audio.
+/// 3. Words with (almost) the same start time are distributed evenly.
 pub fn refine_words(words: &mut [Word], silences: &[Range]) {
     let silences: Vec<Range> = silences.iter().copied().filter(|s| s.len() >= MIN_SILENCE_TOKEN).collect();
     for w in words.iter_mut() {
-        // Nur Pausen ansehen, die das Wort berühren (Pausen sind sortiert).
+        // Only look at pauses that touch the word (pauses are sorted).
         let first = silences.partition_point(|s| s.end <= w.start);
         for s in &silences[first..] {
             if s.start >= w.end {
@@ -1316,7 +1316,7 @@ pub fn refine_words(words: &mut [Word], silences: &[Range]) {
             let starts_in = w.start >= s.start && w.start < s.end;
             let ends_in = w.end > s.start && w.end <= s.end;
             if starts_in && ends_in {
-                // Ganz in der Pause: an den näheren Rand schieben.
+                // Entirely inside the pause: move to the nearer edge.
                 let len = (w.end - w.start).clamp(0.05, 0.3);
                 if s.end - w.end < w.start - s.start {
                     (w.start, w.end) = (s.end, s.end + len);
@@ -1367,7 +1367,7 @@ pub fn refine_words(words: &mut [Word], silences: &[Range]) {
     }
 }
 
-/// Kleinbuchstaben, ohne Satzzeichen – für Wortvergleiche.
+/// Lowercase, without punctuation - for word comparisons.
 pub fn normalize_word(w: &str) -> String {
     w.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
 }
@@ -1450,7 +1450,7 @@ mod tests {
         assert!(approx(clip.local_to_source(1.0, 30), 1.0));
         assert!(approx(clip.local_to_source(2.5, 30), 4.5));
         assert!(approx(clip.source_to_local(4.5, 30), 2.5));
-        // Zeit innerhalb eines Schnitts → Anfang des nächsten Stücks.
+        // Time inside a cut → start of the next piece.
         assert!(approx(clip.source_to_local(3.0, 30), 2.0));
     }
 
@@ -1465,11 +1465,11 @@ mod tests {
         let tokens = p.clip_tokens(p.clip(a).unwrap());
         let ahm = tokens.iter().position(|t| t.text == "ähm").unwrap();
         p.set_tokens_deleted(a, ahm, ahm, true);
-        // „ähm“ (1.1) bis Anfang „Welt.“ (1.6), mit Puffer 20/40 ms zu den Nachbarwörtern,
-        // gerastert auf 30 fps: 1.1333–1.5667 → 0.4333 s.
+        // "ähm" (1.1) to start of "Welt." (1.6), with 20/40 ms buffer to the neighboring words,
+        // snapped to 30 fps: 1.1333–1.5667 → 0.4333 s.
         let expected = 10.0 - 13.0 / 30.0;
         assert!(approx(p.clip(a).unwrap().duration(30), expected), "{}", p.clip(a).unwrap().duration(30));
-        assert!(approx(p.clip(b).unwrap().start, expected), "Hauptspur rückt nach");
+        assert!(approx(p.clip(b).unwrap().start, expected), "main track ripples");
 
         let tokens = p.clip_tokens(p.clip(a).unwrap());
         assert!(p.clip(a).unwrap().is_token_deleted(&tokens[ahm], 30));
@@ -1485,10 +1485,10 @@ mod tests {
         let a = p.add_clip(src, main, 0.0).unwrap();
         let n = p.apply_silence_removal(a, 0.1, 0.5);
         assert_eq!(n, 2);
-        // 2.0–4.0 mit Padding → 1.8 s weg; 5.0–10.0 am Clipende → 4.9 s weg.
+        // 2.0–4.0 with padding → 1.8 s removed; 5.0–10.0 at clip end → 4.9 s removed.
         let d = p.clip(a).unwrap().duration(30);
         assert!(approx(d, 10.0 - 1.8 - 4.9), "{d}");
-        // Erneutes Anwenden ersetzt die alten Stille-Schnitte.
+        // Applying again replaces the old silence cuts.
         p.apply_silence_removal(a, 0.1, 0.5);
         assert!(approx(p.clip(a).unwrap().duration(30), d));
     }
@@ -1531,7 +1531,7 @@ mod tests {
         let (template, _) = test_project();
         let mut m = template.media[0].clone();
         m.id = id;
-        p.media.push(m); // Videodatei: im Audio-Modus zählt nur der Ton
+        p.media.push(m); // Video file: in audio mode only the audio counts
         let main = p.main_track();
         assert_eq!(p.track(main).unwrap().kind, TrackKind::Audio);
         let a = p.add_clip(id, main, 0.0).unwrap();
@@ -1539,7 +1539,7 @@ mod tests {
         assert_eq!(p.fps, 100);
         assert_eq!(p.clip(a).unwrap().transform.fit, FitMode::Fit);
         p.apply_silence_removal(a, 0.0, 0.5);
-        assert!(approx(p.clip(b).unwrap().start, 3.0), "rückt nach: {}", p.clip(b).unwrap().start);
+        assert!(approx(p.clip(b).unwrap().start, 3.0), "ripples: {}", p.clip(b).unwrap().start);
     }
 
     #[test]
@@ -1555,7 +1555,7 @@ mod tests {
     #[test]
     fn whisper_timestamps_are_refined() {
         let w = |t: &str, s: f64, e: f64| Word { text: t.into(), start: s, end: e, core: None };
-        // Whisper: Wörter beginnen in der Pause 7.0–9.3 und teilen sich die Startzeit.
+        // Whisper: words start in the pause 7.0–9.3 and share the start time.
         let mut words = vec![
             w("schneiden.", 6.1, 7.6),
             w("Im", 9.0, 9.0),
@@ -1564,16 +1564,16 @@ mod tests {
             w("wird", 9.7, 9.9),
         ];
         refine_words(&mut words, &[Range::new(7.0, 9.3)]);
-        assert!(approx(words[0].end, 7.0), "Ende an Pausenanfang: {}", words[0].end);
+        assert!(approx(words[0].end, 7.0), "end at pause start: {}", words[0].end);
         for x in &words[1..4] {
-            assert!(x.start >= 9.3 - 1e-9, "{} beginnt nicht in der Pause: {}", x.text, x.start);
+            assert!(x.start >= 9.3 - 1e-9, "{} does not start in the pause: {}", x.text, x.start);
         }
-        assert!(words[1].start < words[2].start && words[2].start < words[3].start, "verteilt");
+        assert!(words[1].start < words[2].start && words[2].start < words[3].start, "distributed");
         assert!(words[3].end <= words[4].start + 1e-9);
 
-        // Eine Pause davor schneidet das Wort danach nicht mehr an.
+        // A pause before it no longer clips the following word.
         let (mut p, src) = test_project();
-        p.media[0].transcript.as_mut().unwrap().words[3].start = 3.5; // „Das“ beginnt laut Whisper in der Pause 2–4
+        p.media[0].transcript.as_mut().unwrap().words[3].start = 3.5; // "Das" starts inside the pause 2–4 according to Whisper
         let main = p.main_track();
         let a = p.add_clip(src, main, 0.0).unwrap();
         p.apply_silence_removal(a, 0.1, 0.5);
@@ -1582,8 +1582,8 @@ mod tests {
         assert!(clip.kept_fraction(das.range, 30) > 0.9);
     }
 
-    /// Echte Werte aus einer Aufnahme: „Ozean. [Pause – Atmer – Pause] Wasserstoffeis“.
-    /// Whisper legt „Wasserstoffeis“ auf 29.36–34.00, gesprochen wird es ab 32.96.
+    /// Real values from a recording: "Ozean. [pause - breath - pause] Wasserstoffeis".
+    /// Whisper places "Wasserstoffeis" at 29.36–34.00, it is spoken from 32.96.
     #[test]
     fn word_spanning_pauses_and_breath_between_pauses() {
         let w = |t: &str, s: f64, e: f64| Word { text: t.into(), start: s, end: e, core: None };
@@ -1621,13 +1621,13 @@ mod tests {
         assert!((tokens[3].range.start - 32.958662).abs() < 1e-6);
         assert!((tokens[1].range.end - 28.790567).abs() < 1e-6);
 
-        // Stille entfernen nimmt auch den Atmer dazwischen mit.
+        // Removing silence also takes the breath in between.
         p.apply_silence_removal(c, 0.0, 0.5);
         let clip = p.clip(c).unwrap();
         assert!(clip.removed_time(p.fps) > 4.1, "{}", clip.removed_time(p.fps));
         assert!(clip.kept_fraction(tokens[3].range, p.fps) > 0.99);
 
-        // Liegt ein Wort im Geräusch, bleiben es zwei Pausen.
+        // If a word lies in the noise, there remain two pauses.
         p.media[0].transcript.as_mut().unwrap().words.insert(2, w("Ja.", 30.75, 31.1));
         let tokens = p.clip_tokens(p.clip(c).unwrap());
         let texts: Vec<&str> = tokens.iter().map(|t| t.text.as_str()).collect();
@@ -1637,7 +1637,7 @@ mod tests {
     #[test]
     fn quiet_words_are_uncertain_and_kept_by_filler_removal() {
         let (mut p, src) = test_project();
-        // Wellenform: überall Sprache (≈ −10 dB), nur bei 1.1–1.5 s („ähm“) fast still.
+        // Waveform: speech everywhere (≈ −10 dB), only nearly silent at 1.1–1.5 s ("ähm").
         let mut peaks = vec![0.55f32; 1000];
         for v in &mut peaks[110..=150] {
             *v = 0.05;
@@ -1650,25 +1650,25 @@ mod tests {
         let unsure: Vec<&str> = tokens.iter().filter(|t| t.uncertain).map(|t| t.text.as_str()).collect();
         assert_eq!(unsure, vec!["ähm"]);
         assert_eq!(p.remove_fillers(a, &["ähm".into()]), (0, 1));
-        assert!(approx(p.clip(a).unwrap().duration(30), 10.0), "nichts geschnitten");
+        assert!(approx(p.clip(a).unwrap().duration(30), 10.0), "nothing cut");
     }
 
     #[test]
     fn deleting_respects_word_core() {
         let (mut p, src) = test_project();
-        // „ähm“ liegt laut DTW nur bei 1.1–1.3; danach beginnt leise schon „Welt.“
+        // "ähm" lies only at 1.1–1.3 according to DTW; after that "Welt." quietly begins.
         p.media_mut(src).unwrap().transcript.as_mut().unwrap().words[1].core = Some((1.1, 1.3));
         let main = p.main_track();
         let a = p.add_clip(src, main, 0.0).unwrap();
         p.set_tokens_deleted(a, 1, 1, true);
         let cut = p.clip(a).unwrap().cuts[0].range;
         assert!(approx(cut.start, 1.12) && approx(cut.end, 1.3), "{cut:?}");
-        // Trotz kleinerem Schnitt gilt das Wort als gelöscht (Anzeige: durchgestrichen).
+        // Despite the smaller cut, the word counts as deleted (display: struck through).
         let clip = p.clip(a).unwrap();
         let tokens = p.clip_tokens(clip);
-        assert!(clip.is_token_deleted(&tokens[1], 30), "„ähm“ muss als gelöscht gelten");
+        assert!(clip.is_token_deleted(&tokens[1], 30), "\"ähm\" must count as deleted");
         assert!(!clip.is_token_deleted(&tokens[0], 30) && !clip.is_token_deleted(&tokens[2], 30));
-        // Wiederherstellen entfernt den Schnitt vollständig.
+        // Restoring removes the cut completely.
         p.set_tokens_deleted(a, 1, 1, false);
         assert!(p.clip(a).unwrap().cuts.is_empty());
     }
@@ -1679,30 +1679,30 @@ mod tests {
         let main = p.main_track();
         let a = p.add_clip(src, main, 0.0).unwrap();
         let b = p.add_clip(src, main, 0.0).unwrap();
-        // A spielt 0–4 s der Quelle, B 6–10 s → Handles vorhanden.
+        // A plays 0–4 s of the source, B 6–10 s → handles available.
         p.clip_mut(a).unwrap().src_out = 4.0;
         p.clip_mut(b).unwrap().src_in = 6.0;
         p.repack_main();
-        assert_eq!(p.clip_edges(p.clip(a).unwrap()), ClipEdges::default(), "aus = keine Übergänge");
+        assert_eq!(p.clip_edges(p.clip(a).unwrap()), ClipEdges::default(), "off = no transitions");
 
         p.clip_transition = ClipTransition { video: true, audio: true, ms: 1000.0, ..Default::default() };
         let (ea, eb) = (p.clip_edges(p.clip(a).unwrap()), p.clip_edges(p.clip(b).unwrap()));
-        assert!(!ea.start.is_some() && !eb.end.is_some(), "nur an der Berührstelle");
+        assert!(!ea.start.is_some() && !eb.end.is_some(), "only at the contact point");
         assert!(approx(ea.end.extend, 0.5) && approx(eb.start.extend, 0.5));
-        assert!(approx(eb.start.video_fade, 1.0) && approx(ea.end.video_fade, 0.0), "oberer Clip blendet ein");
+        assert!(approx(eb.start.video_fade, 1.0) && approx(ea.end.video_fade, 0.0), "upper clip fades in");
         assert!(approx(ea.end.audio_fade, 1.0) && approx(eb.start.audio_fade, 1.0));
         let segs = p.segments_with_edges(p.clip(b).unwrap(), &eb);
         assert!(approx(segs[0].0, 3.5) && approx(segs[0].1.start, 5.5), "{segs:?}");
-        assert_eq!(segs.len(), 1, "Handle und Clip zu einem Stück zusammengefasst");
-        assert!(approx(p.duration(), 8.0), "Timeline-Länge unverändert");
+        assert_eq!(segs.len(), 1, "handle and clip merged into one piece");
+        assert!(approx(p.duration(), 8.0), "timeline length unchanged");
 
-        // Ohne Material vor dem In-Punkt (B beginnt bei 0) → über Schwarz.
+        // Without material before the in point (B starts at 0) → through black.
         p.clip_mut(b).unwrap().src_in = 0.0;
         p.repack_main();
         let eb = p.clip_edges(p.clip(b).unwrap());
         assert!(approx(eb.start.extend, 0.0) && approx(eb.start.video_fade, 0.5) && approx(eb.start.audio_fade, 0.5));
 
-        // Nur Audiospuren aktiv → Videoclips unverändert.
+        // Only audio tracks active → video clips unchanged.
         p.clip_transition.video = false;
         assert_eq!(p.clip_edges(p.clip(b).unwrap()), ClipEdges { curve: FadeCurve::Sine, ..Default::default() });
     }

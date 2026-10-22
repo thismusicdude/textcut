@@ -1,117 +1,117 @@
 # TextCutForge
 
-Videoschnitt in Rust, bei dem du **Text statt Video schneidest**: Jeder Clip wird
-transkribiert und wie ein Textdokument dargestellt. Löschst du Wörter, wird das Video
-an genau diesen Stellen geschnitten. **Stille wird automatisch erkannt und entfernt.**
+A video editor written in Rust where you **edit text instead of video**: every clip is
+transcribed and shown like a text document. Delete words and the video is cut at exactly
+those spots. **Silence is detected and removed automatically.**
 
-## Zwei Modi
+## Two modes
 
-Beim Start wählst du den Projekttyp (später über *Datei → Neues Projekt …*):
+On startup you pick the project type (later via *File → New project …*):
 
-- **🎬 Video-Projekt:** alles unten Beschriebene, inklusive Bild-in-Bild und Export in mehreren Größen.
-  Zusätzlich lässt sich die Tonspur der Timeline als Audiodatei exportieren.
-- **🎧 Audio-Projekt** für Podcasts, Interviews und Voiceover: nur Tonspuren, die Hauptspur A1 ist magnetisch,
-  Schnitte rastern auf 10 ms. Videodateien liefern ihren Ton. Statt der Videovorschau zeigt ein
-  Player den gerade gesprochenen Satz.
+- **🎬 Video project:** everything described below, including picture-in-picture and export in multiple sizes.
+  The timeline's audio can also be exported as an audio file.
+- **🎧 Audio project** for podcasts, interviews and voiceover: audio tracks only, main track A1 is magnetic,
+  cuts snap to 10 ms. Video files contribute their audio. Instead of the video preview, a
+  player shows the sentence currently being spoken.
 
-## Funktionen
+## Features
 
-**Hauptfunktionen**
-- **Text-Schnitt:** Wörter markieren (klicken/ziehen, ⇧+Klick) → `Entf` schneidet sie heraus.
-  Nochmal `Entf` stellt sie wieder her. Alles nicht-destruktiv und mit Undo/Redo.
-- **Stille automatisch entfernen:** ffmpeg `silencedetect` findet Pausen. Ein Klick schneidet sie
-  aus allen Clips, mit einstellbarer Schwelle (dB), Mindestdauer und Rand.
-  Pausen erscheinen als `⏸ 1.2s`-Marken im Text und lassen sich auch einzeln löschen.
-- Füllwörter („äh“, „ähm“ …) entfernen, Suchen & alle Treffer löschen. Whisper lässt Füllwörter normalerweise
-  weg. Mit **„Füllwörter mit transkribieren (wortgetreu)“** (Einstellungen, standardmäßig an) bekommt es einen
-  Prompt mit Füllwörtern und schreibt sie, Wiederholungen und Versprecher mit (de/en/fr/es/it/nl).
-  Wörter mit kaum Ton darunter sind **gelb unterstrichen**: Whisper hat sie womöglich erfunden. „Füllwörter
-  entfernen“ lässt diese stehen.
-- Präzise Wortgrenzen: DTW-Zeitstempel von whisper.cpp plus Pegelanalyse. Beim Löschen wird nur der
-  Wortkern geschnitten, leise Anlaute von Nachbarwörtern (z. B. das „S“ in „Sphäre“) bleiben erhalten.
-- **Weiche Übergänge:** An jeder Schnittstelle wird der Ton kurz aus- und wieder eingeblendet.
-  Länge (5–500 ms) und Kurve (Linear, Sinus, S-Kurve, Schnell, Langsam) sind einstellbar,
-  getrennt für Text- und Stille-Schnitte, mit Kurvenvorschau. Die Länge der Timeline ändert sich nicht.
-- Whisper-Zeitstempel werden mit der Stille-Analyse nachkorrigiert: Wörter beginnen und enden nie in
-  einer Pause und überspannen keine. Wörter mit gleicher Startzeit werden verteilt. Kurze Geräusche ohne
-  Wort zwischen zwei Pausen (Atmer, Schmatzen) zählen zur Pause und werden beim Stille-Entfernen mit entfernt.
+**Core features**
+- **Text editing:** select words (click/drag, ⇧+click) → `Delete` cuts them out.
+  Press `Delete` again to restore them. Everything is non-destructive with undo/redo.
+- **Remove silence automatically:** ffmpeg `silencedetect` finds pauses. One click cuts them
+  from all clips, with adjustable threshold (dB), minimum duration and padding.
+  Pauses appear as `⏸ 1.2s` markers in the text and can also be deleted individually.
+- Remove filler words ("äh", "ähm" …), search & delete all matches. Whisper normally omits filler
+  words. With **"Transcribe filler words (verbatim)"** (Settings, on by default) it gets a
+  prompt containing filler words and transcribes them, along with repetitions and slips of the tongue (de/en/fr/es/it/nl).
+  Words with hardly any audio underneath are **underlined in yellow**: Whisper may have invented them. "Remove
+  filler words" leaves these in place.
+- Precise word boundaries: DTW timestamps from whisper.cpp plus level analysis. When deleting, only the
+  word core is cut; quiet onsets of neighboring words (e.g. the "S" in "Sphäre") are preserved.
+- **Smooth transitions:** at every cut point the audio briefly fades out and back in.
+  Length (5–500 ms) and curve (Linear, Sine, S-curve, Fast, Slow) are adjustable,
+  separately for text and silence cuts, with a curve preview. The timeline length does not change.
+- Whisper timestamps are corrected using the silence analysis: words never start or end inside
+  a pause and never span one. Words with the same start time are spread out. Short wordless noises
+  between two pauses (breaths, lip smacks) count as part of the pause and are removed along with silence.
 
-**Schnitt**
-- Timeline mit Haupt-Videospur (magnetisch, rückt automatisch nach), beliebig vielen
-  weiteren Video- und Audiospuren
-- Teilen, Trimmen (Clip-Ränder ziehen), Verschieben, Duplizieren, Löschen, Magnet/Snapping,
-  Zoom, Wellenform, Schnittmarken
-- Lautstärke, Stumm, Ein-/Ausblenden, Spuren stumm schalten oder ausblenden
-- **Clip-Übergänge** (Video- und/oder Audiospuren), wo zwei Clips aneinanderstoßen: **Überblenden** (Bild löst sich auf,
-  Ton wird übergeblendet; nutzt Material vor/nach den Clip-Grenzen, die Timeline-Länge bleibt gleich) oder
-  **über Schwarz/Stille**. Länge 50–4000 ms, Kurve für den Ton einstellbar, Übergänge sind in der Timeline markiert.
-- **Bild-in-Bild:** Clips auf V2+ mit Positions-Presets, Größe, X/Y, Deckkraft und Rahmen
-- **Audiodateien** (mp3, wav, m4a, flac …) auf Audiospuren
-- Vorschau mit Ton. Sie nutzt denselben Render-Graphen wie der Export.
+**Editing**
+- Timeline with a main video track (magnetic, closes gaps automatically) and any number of
+  additional video and audio tracks
+- Split, trim (drag clip edges), move, duplicate, delete, magnet/snapping,
+  zoom, waveform, markers
+- Volume, mute, fade in/out, mute or hide tracks
+- **Clip transitions** (video and/or audio tracks) where two clips meet: **Crossfade** (picture dissolves,
+  audio crossfades; uses material before/after the clip boundaries, the timeline length stays the same) or
+  **via black/silence**. Length 50–4000 ms, adjustable audio curve, transitions are marked in the timeline.
+- **Picture-in-picture:** clips on V2+ with position presets, size, X/Y, opacity and border
+- **Audio files** (mp3, wav, m4a, flac …) on audio tracks
+- Preview with audio. It uses the same render graph as the export.
 
 **Export**
-- Mehrere Größen in einem Durchgang: Original, 4K, 1440p, 1080p, 720p, 480p,
-  9:16 (Reels/TikTok/Shorts), 1:1, 4:5, eigene Größe
-- Andere Seitenverhältnisse: einpassen (Balken) oder füllen (zuschneiden)
-- H.264, H.265, H.264-Hardware (VideoToolbox), ProRes 422
-- **Audio-Export** (in beiden Modi): MP3, M4A (AAC), WAV, FLAC, Bitrate 128–320 kbit/s,
-  optional **Lautheits-Normalisierung auf −16 LUFS**
-- **Untertitel einbrennen** (💬 im Text-Schnitt): Text aus dem Transkript, folgt allen Schnitten. Vorlagen Klassisch,
-  Social Media (große Großbuchstaben, aktuelles Wort farbig) und Box. Schrift, Größe, Position, Farben, Kontur,
-  Hintergrundbox und Zeilenlänge sind einstellbar, Größen relativ zur Videohöhe (passt für 16:9 und 9:16 gleichermaßen).
-  Gezeichnet wird in Rust; ffmpeg braucht dafür keine Textfilter (libass/drawtext).
-- SRT-Untertitel, die den Schnitten folgen (dieselben Zeilen wie beim Einbrennen)
+- Multiple sizes in one pass: Original, 4K, 1440p, 1080p, 720p, 480p,
+  9:16 (Reels/TikTok/Shorts), 1:1, 4:5, custom size
+- Other aspect ratios: fit (letterbox) or fill (crop)
+- H.264, H.265, H.264 hardware (VideoToolbox), ProRes 422
+- **Audio export** (in both modes): MP3, M4A (AAC), WAV, FLAC, bitrate 128–320 kbit/s,
+  optional **loudness normalization to −16 LUFS**
+- **Burn in subtitles** (💬 in the transcript): text from the transcript, follows all cuts. Presets Classic,
+  Social Media (large capitals, current word highlighted) and Box. Font, size, position, colors, outline,
+  background box and line length are adjustable, sizes relative to video height (works equally for 16:9 and 9:16).
+  Rendering is done in Rust; ffmpeg needs no text filters (libass/drawtext) for it.
+- SRT subtitles that follow the cuts (same lines as when burning in)
 
-## Voraussetzungen
+## Requirements
 
-| Tool | Zweck | macOS |
+| Tool | Purpose | macOS |
 |---|---|---|
-| Rust ≥ 1.86 | Bauen | `rustup` |
-| ffmpeg + ffprobe | Analyse, Vorschau, Export | `brew install ffmpeg` |
-| whisper.cpp (`whisper-cli`) | Transkription (lokal, offline) | `brew install whisper-cpp` |
+| Rust ≥ 1.86 | Build | `rustup` |
+| ffmpeg + ffprobe | Analysis, preview, export | `brew install ffmpeg` |
+| whisper.cpp (`whisper-cli`) | Transcription (local, offline) | `brew install whisper-cpp` |
 
-Das Whisper-Modell lädt TextCutForge unter **Einstellungen → Modell → Herunterladen**
-nach `~/.textcutforge/models/`. `base` ist schnell, `small` oder `large-v3-turbo` sind genauer.
+TextCutForge downloads the Whisper model via **Settings → Model → Download**
+to `~/.textcutforge/models/`. `base` is fast, `small` or `large-v3-turbo` are more accurate.
 
-## Starten
+## Running
 
 ```bash
-cargo run --release                   # App starten
-cargo run --release -- video.mp4      # direkt mit Video
-cargo run --release -- projekt.tcf    # Projekt öffnen
-cargo test                            # Tests (inkl. echter ffmpeg-Renderings)
+cargo run --release                   # start the app
+cargo run --release -- video.mp4      # start with a video
+cargo run --release -- projekt.tcf    # open a project
+cargo test                            # tests (including real ffmpeg renders)
 ```
 
-## Ablauf
+## Workflow
 
-1. Video ins Fenster ziehen. Es landet auf der Hauptspur und wird transkribiert und auf Stille analysiert.
-2. **🔇 Stille automatisch entfernen** klicken.
-3. Im Text Versprecher markieren und mit `Entf` löschen.
-4. Optional: zweites Video über **🖼 Bild-in-Bild** auf V2 legen und im Inspektor positionieren.
-5. **⬆ Exportieren**, z. B. 1080p und 9:16 gleichzeitig.
+1. Drag a video into the window. It lands on the main track and is transcribed and analyzed for silence.
+2. Click **🔇 Remove silence automatically**.
+3. Select slips of the tongue in the text and delete them with `Delete`.
+4. Optional: put a second video on V2 via **🖼 Picture-in-picture** and position it in the inspector.
+5. **⬆ Export**, e.g. 1080p and 9:16 at the same time.
 
-## Tastenkürzel
+## Keyboard shortcuts
 
-`Leertaste` Abspielen · `Entf` Text/Clip löschen · `S` teilen · `⌘Z`/`⇧⌘Z` Undo/Redo ·
-`⌘D` duplizieren · `←/→` Bild (mit ⇧: 1 s) · `J/K/L` · `⌘S/⌘O/⌘I/⌘E`
+`Space` play · `Delete` delete text/clip · `S` split · `⌘Z`/`⇧⌘Z` undo/redo ·
+`⌘D` duplicate · `←/→` frame (with ⇧: 1 s) · `J/K/L` · `⌘S/⌘O/⌘I/⌘E`
 
-## Architektur
+## Architecture
 
 ```
 src/
-├── project.rs     Datenmodell + Schnittlogik (Cuts, Split, Zeitabbildung, Tokens), getestet
-├── render.rs      Timeline → ffmpeg filter_complex (geteilt von Vorschau & Export)
-├── preview.rs     Scrub-Einzelbilder + Echtzeit-Wiedergabe (rawvideo/PCM-Pipes, rodio)
-├── export.rs      Export-Presets, Codecs, Fortschritt, SRT
-├── subtitles.rs   Untertitelzeilen, Text-Rendering (ab_glyph), Einbrennen per Bildfolge
-├── media.rs       ffprobe, Wellenform, silencedetect
-├── transcribe.rs  whisper-cli-Aufruf, JSON-Parser, Modell-Download
+├── project.rs     data model + editing logic (cuts, split, time mapping, tokens), tested
+├── render.rs      timeline → ffmpeg filter_complex (shared by preview & export)
+├── preview.rs     scrub frames + real-time playback (rawvideo/PCM pipes, rodio)
+├── export.rs      export presets, codecs, progress, SRT
+├── subtitles.rs   subtitle lines, text rendering (ab_glyph), burn-in via image sequence
+├── media.rs       ffprobe, waveform, silencedetect
+├── transcribe.rs  whisper-cli invocation, JSON parser, model download
 ├── settings.rs    ~/.textcutforge/settings.json
-├── app.rs         App-Zustand, Undo/Redo, Hintergrundjobs, Tastatur
-└── ui/            Transkript-Editor, Timeline, Panels, Dialoge (egui)
+├── app.rs         app state, undo/redo, background jobs, keyboard
+└── ui/            transcript editor, timeline, panels, dialogs (egui)
 ```
 
-Schnitte werden nicht-destruktiv als Quell-Zeitbereiche gespeichert. Die abgespielten
-Bereiche sind Quellbereich minus Schnitte, gerastert auf das Frame-Raster. ffmpeg wählt sie
-pro Clip in einem Durchlauf per `select`/`aselect` aus. Das bleibt auch bei Hunderten Text-Schnitten
-schnell, und Bild und Ton bleiben synchron.
+Cuts are stored non-destructively as source time ranges. The played ranges are the
+source range minus the cuts, snapped to the frame grid. ffmpeg selects them per clip
+in a single pass via `select`/`aselect`. This stays fast even with hundreds of text cuts,
+and picture and sound stay in sync.

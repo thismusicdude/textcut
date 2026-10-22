@@ -1,9 +1,9 @@
-//! Kleine Helfer: Zeitformatierung, App-Verzeichnisse, Programmsuche.
+//! Small helpers: time formatting, app directories, program lookup.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Formatiert Sekunden als `mm:ss.ff` (bzw. `h:mm:ss.ff`).
+/// Formats seconds as `mm:ss.ff` (or `h:mm:ss.ff`).
 pub fn fmt_time(t: f64) -> String {
     let t = t.max(0.0);
     let total_cs = (t * 100.0).round() as u64;
@@ -18,7 +18,7 @@ pub fn fmt_time(t: f64) -> String {
     }
 }
 
-/// Zeitstempel im SRT-Format `hh:mm:ss,mmm`.
+/// Timestamp in SRT format `hh:mm:ss,mmm`.
 pub fn fmt_srt_time(t: f64) -> String {
     let total_ms = (t.max(0.0) * 1000.0).round() as u64;
     let ms = total_ms % 1000;
@@ -28,7 +28,7 @@ pub fn fmt_srt_time(t: f64) -> String {
     format!("{h:02}:{m:02}:{s:02},{ms:03}")
 }
 
-/// Basisverzeichnis für Einstellungen, Modelle und Cache: `~/.textcutforge`.
+/// Base directory for settings, models and cache: `~/.textcutforge`.
 pub fn app_dir() -> PathBuf {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
@@ -51,8 +51,8 @@ pub fn models_dir() -> PathBuf {
     dir
 }
 
-/// Sucht ein Programm im PATH (plus typische Homebrew-Pfade, da GUI-Apps
-/// unter macOS oft einen reduzierten PATH haben).
+/// Looks up a program in PATH (plus typical Homebrew paths, since GUI apps
+/// on macOS often have a reduced PATH).
 pub fn find_program(names: &[&str]) -> Option<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
@@ -75,8 +75,8 @@ pub fn find_program(names: &[&str]) -> Option<PathBuf> {
     None
 }
 
-/// Ein Programm, das nicht gefunden wurde, wird trotzdem per Name aufgerufen,
-/// damit die Fehlermeldung des Betriebssystems sichtbar wird.
+/// A program that was not found is still invoked by name,
+/// so that the operating system's error message becomes visible.
 pub fn program_or_name(configured: &str, names: &[&str]) -> PathBuf {
     if !configured.trim().is_empty() {
         return PathBuf::from(configured.trim());
@@ -84,7 +84,7 @@ pub fn program_or_name(configured: &str, names: &[&str]) -> PathBuf {
     find_program(names).unwrap_or_else(|| PathBuf::from(names[0]))
 }
 
-/// Erzeugt einen `Command`, der unter Windows kein Konsolenfenster öffnet.
+/// Creates a `Command` that does not open a console window on Windows.
 pub fn command(program: impl AsRef<Path>) -> Command {
     #[allow(unused_mut)]
     let mut cmd = Command::new(program.as_ref());
@@ -96,7 +96,7 @@ pub fn command(program: impl AsRef<Path>) -> Command {
     cmd
 }
 
-/// Rundet auf gerade Pixelwerte (nötig für yuv420p).
+/// Rounds to even pixel values (required for yuv420p).
 pub fn even(v: f64) -> u32 {
     let v = v.round().max(2.0) as u32;
     v - (v % 2)
@@ -105,7 +105,7 @@ pub fn even(v: f64) -> u32 {
 pub fn file_stem(path: &Path) -> String {
     path.file_stem()
         .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "Unbenannt".into())
+        .unwrap_or_else(|| "Untitled".into())
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
-//! Spracherkennung mit whisper.cpp (`whisper-cli`) – lokal, offline.
+//! Speech recognition with whisper.cpp (`whisper-cli`) - local, offline.
 //!
-//! Ablauf: Audio als 16 kHz-WAV extrahieren → `whisper-cli` mit
-//! Wort-Zeitstempeln (`-ml 1 -sow`) aufrufen → JSON einlesen.
+//! Flow: extract audio as 16 kHz WAV → run `whisper-cli` with
+//! word timestamps (`-ml 1 -sow`) → read the JSON.
 
 use crate::media::{Tools, extract_wav16k};
 use crate::project::{Transcript, Word};
@@ -12,7 +12,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-/// Verfügbare Modelle: (Name, ungefähre Größe in MB).
+/// Available models: (name, approximate size in MB).
 pub const MODELS: &[(&str, u64)] = &[
     ("tiny", 75),
     ("base", 142),
@@ -35,13 +35,13 @@ pub struct WhisperConfig {
     /// "auto", "de", "en", …
     pub language: String,
     pub threads: usize,
-    /// Start-Prompt, z.B. mit Füllwörtern für wortgetreue Transkription.
+    /// Initial prompt, e.g. with filler words for verbatim transcription.
     pub prompt: Option<String>,
-    /// DTW-Voreinstellung passend zum Modell (genauere Wortzeiten).
+    /// DTW preset matching the model (more accurate word timings).
     pub dtw: Option<String>,
 }
 
-/// whisper.cpp-DTW-Voreinstellung für eine Modelldatei (`ggml-small.bin` → `small`).
+/// whisper.cpp DTW preset for a model file (`ggml-small.bin` → `small`).
 pub fn dtw_preset(model: &Path) -> Option<String> {
     let stem = model.file_stem()?.to_str()?.strip_prefix("ggml-")?;
     let name = stem.split(['-', '.']).collect::<Vec<_>>();
@@ -55,8 +55,8 @@ pub fn dtw_preset(model: &Path) -> Option<String> {
     Some(preset)
 }
 
-/// Prompt mit Füllwörtern: Whisper übernimmt den Stil und schreibt „äh“, „ähm“,
-/// Wiederholungen und Versprecher mit, statt sie zu glätten.
+/// Prompt with filler words: Whisper adopts the style and transcribes "uh", "um",
+/// repetitions and slips of the tongue instead of smoothing them out.
 pub fn verbatim_prompt(language: &str) -> Option<&'static str> {
     Some(match language {
         "de" => "Ähm, also, äh, ich meine, hm, ähm, ja. Äh, genau, ähm.",
@@ -69,10 +69,10 @@ pub fn verbatim_prompt(language: &str) -> Option<&'static str> {
     })
 }
 
-/// Transkribiert eine Mediendatei. `progress` erhält Werte von 0..1.
+/// Transcribes a media file. `progress` receives values from 0..1.
 pub fn transcribe(tools: &Tools, cfg: &WhisperConfig, media: &Path, progress: &dyn Fn(f32)) -> Result<Transcript> {
     if !cfg.model.is_file() {
-        bail!("Whisper-Modell nicht gefunden: {} – bitte in den Einstellungen herunterladen.", cfg.model.display());
+        bail!("Whisper model not found: {} - please download it in Settings.", cfg.model.display());
     }
     let tmp = crate::util::cache_dir().join(format!("tcf_{}_{}", std::process::id(), unique()));
     let wav = tmp.with_extension("wav");
@@ -86,7 +86,7 @@ pub fn transcribe(tools: &Tools, cfg: &WhisperConfig, media: &Path, progress: &d
         .arg("-f")
         .arg(&wav)
         .args(cfg.prompt.iter().flat_map(|p| ["--prompt", p.as_str()]))
-        // DTW braucht volle JSON-Ausgabe und verträgt sich nicht mit Flash-Attention.
+        // DTW needs full JSON output and is incompatible with flash attention.
         .args(cfg.dtw.iter().flat_map(|d| ["-dtw", d.as_str(), "-nfa", "-ojf"]))
         .args(["-l", &cfg.language, "-ml", "1", "-sow", "-oj", "-pp", "-t", &cfg.threads.to_string(), "-of"])
         .arg(&tmp)
@@ -95,7 +95,7 @@ pub fn transcribe(tools: &Tools, cfg: &WhisperConfig, media: &Path, progress: &d
         .spawn()
         .with_context(|| {
             format!(
-                "whisper-cli konnte nicht gestartet werden ({}). Installation z.B. mit `brew install whisper-cpp`.",
+                "Failed to start whisper-cli ({}). Install it e.g. with `brew install whisper-cpp`.",
                 cfg.binary.display()
             )
         })?;
@@ -117,7 +117,7 @@ pub fn transcribe(tools: &Tools, cfg: &WhisperConfig, media: &Path, progress: &d
     let _ = std::fs::remove_file(&wav);
     let json_path = tmp.with_extension("json");
     if !status.success() || !json_path.is_file() {
-        bail!("whisper-cli ist fehlgeschlagen:\n{}", log_tail.join("\n"));
+        bail!("whisper-cli failed:\n{}", log_tail.join("\n"));
     }
     let text = std::fs::read_to_string(&json_path)?;
     let _ = std::fs::remove_file(&json_path);
@@ -139,18 +139,18 @@ fn parse_progress(line: &str) -> Option<f32> {
     rest.trim().parse::<f32>().ok().map(|p| (p / 100.0).clamp(0.0, 1.0))
 }
 
-/// Liest das JSON von `whisper-cli -oj` (mit `-ml 1 -sow` = ein Wort pro Segment).
+/// Reads the JSON from `whisper-cli -oj` (with `-ml 1 -sow` = one word per segment).
 #[cfg(test)]
 pub fn parse_whisper_json(text: &str) -> Result<Transcript> {
     parse_whisper_json_with_audio(text, None)
 }
 
-/// Wie `parse_whisper_json`, verfeinert Wortgrenzen aber am Pegel der Aufnahme.
+/// Like `parse_whisper_json`, but refines word boundaries using the recording's level.
 pub fn parse_whisper_json_with_audio(text: &str, peaks: Option<&[f32]>) -> Result<Transcript> {
-    let json: Value = serde_json::from_str(text).context("Whisper-JSON ungültig")?;
-    let segments = json["transcription"].as_array().ok_or_else(|| anyhow!("Whisper-JSON: 'transcription' fehlt"))?;
+    let json: Value = serde_json::from_str(text).context("Invalid Whisper JSON")?;
+    let segments = json["transcription"].as_array().ok_or_else(|| anyhow!("Whisper JSON: 'transcription' missing"))?;
     let language = json["result"]["language"].as_str().unwrap_or("").to_string();
-    // Pro Wort zusätzlich die DTW-Zeiten (erster/letzter Wortteil ohne Satzzeichen).
+    // Additionally, the DTW times per word (first/last word part without punctuation).
     let mut words: Vec<Word> = Vec::new();
     let mut dtw: Vec<(Option<f64>, Option<f64>)> = Vec::new();
     for seg in segments {
@@ -189,19 +189,19 @@ pub fn parse_whisper_json_with_audio(text: &str, peaks: Option<&[f32]>) -> Resul
     Ok(Transcript { language, words, ..Default::default() })
 }
 
-/// DTW-Zeitstempel (`-dtw`) sind deutlich genauer als die Segmentzeiten, liegen
-/// aber mit etwas Verzögerung *innerhalb* der Wortteile. Die Grenze zwischen zwei
-/// Wörtern liegt daher zwischen dem letzten Wortteil des einen und dem ersten des
-/// nächsten – genau dort wird der leiseste Punkt der Wellenform gesucht
-/// (`peaks`: Spitzenpegel 100/s). Ohne Wellenform: Erfahrungswert (−0,2 s).
-/// Pausen korrigiert danach `project::refine_words`.
+/// DTW timestamps (`-dtw`) are much more accurate than the segment times, but lie
+/// slightly delayed *inside* the word parts. The boundary between two words
+/// therefore lies between the last word part of one and the first of the next -
+/// exactly there the quietest point of the waveform is searched
+/// (`peaks`: peak level 100/s). Without a waveform: empirical value (-0.2 s).
+/// Pauses are corrected afterwards by `project::refine_words`.
 fn apply_dtw_times(words: &mut [Word], dtw: &[(Option<f64>, Option<f64>)], peaks: Option<&[f32]>) {
     const LAG: f64 = 0.2;
     let with_dtw = dtw.iter().filter(|(_, l)| l.is_some()).count();
     if words.is_empty() || with_dtw * 10 < words.len() * 8 {
-        return; // ohne (ausreichend) DTW-Daten: Segmentzeiten behalten
+        return; // without (enough) DTW data: keep segment times
     }
-    // Fehlende Werte mit Segmentzeiten auffüllen.
+    // Fill missing values with segment times.
     let times: Vec<(f64, f64)> = words
         .iter()
         .zip(dtw)
@@ -233,7 +233,7 @@ fn apply_dtw_times(words: &mut [Word], dtw: &[(Option<f64>, Option<f64>)], peaks
     }
 }
 
-/// Zeitpunkt mit dem niedrigsten (über 30 ms geglätteten) Pegel in `[lo, hi]`.
+/// Point in time with the lowest (30 ms smoothed) level in `[lo, hi]`.
 fn quietest_point(peaks: &[f32], lo: f64, hi: f64) -> f64 {
     let a = ((lo * 100.0).round().max(0.0) as usize).min(peaks.len() - 1);
     let b = ((hi * 100.0).round() as usize).clamp(a, peaks.len() - 1);
@@ -246,11 +246,11 @@ fn quietest_point(peaks: &[f32], lo: f64, hi: f64) -> f64 {
     best as f64 / 100.0
 }
 
-/// Spitzenpegel (0..1, 100 Werte/s) aus einer 16-Bit-PCM-WAV-Datei.
+/// Peak levels (0..1, 100 values/s) from a 16-bit PCM WAV file.
 pub fn wav_peaks(path: &Path) -> Result<Vec<f32>> {
     let bytes = std::fs::read(path)?;
     if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
-        bail!("keine WAV-Datei");
+        bail!("not a WAV file");
     }
     let (mut pos, mut rate, mut channels) = (12usize, 16000u32, 1u16);
     while pos + 8 <= bytes.len() {
@@ -273,15 +273,15 @@ pub fn wav_peaks(path: &Path) -> Result<Vec<f32>> {
         }
         pos = body + len + (len % 2);
     }
-    bail!("WAV ohne Daten")
+    bail!("WAV without data")
 }
 
-/// Whisper-Markierungen wie `[BLANK_AUDIO]`, `[Musik]`, `(Applaus)`.
+/// Whisper annotations like `[BLANK_AUDIO]`, `[Music]`, `(Applause)`.
 fn is_annotation(t: &str) -> bool {
     (t.starts_with('[') && t.ends_with(']')) || (t.starts_with('(') && t.ends_with(')')) || t.starts_with("[_")
 }
 
-/// Lädt ein Modell per `curl` herunter. `progress` erhält 0..1.
+/// Downloads a model via `curl`. `progress` receives 0..1.
 pub fn download_model(name: &str, progress: &dyn Fn(f32)) -> Result<PathBuf> {
     let target = model_path(name);
     let part = target.with_extension("part");
@@ -293,12 +293,12 @@ pub fn download_model(name: &str, progress: &dyn Fn(f32)) -> Result<PathBuf> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .context("curl konnte nicht gestartet werden")?;
+        .context("Failed to start curl")?;
     loop {
         if let Some(status) = child.try_wait()? {
             if !status.success() {
                 let _ = std::fs::remove_file(&part);
-                bail!("Download fehlgeschlagen (curl Exit-Code {:?})", status.code());
+                bail!("Download failed (curl exit code {:?})", status.code());
             }
             break;
         }
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn uses_dtw_times_when_present() {
-        // Ausschnitt aus einer echten Ausgabe: Segmentzeiten liegen in der Pause, DTW stimmt.
+        // Excerpt from real output: segment times fall in the pause, DTW is correct.
         let json = r#"{"transcription": [
           {"offsets": {"from": 28020, "to": 29000}, "text": " Ozeanen.",
            "tokens": [{"text": " Oze", "t_dtw": 2786}, {"text": "anen", "t_dtw": 2880}, {"text": ".", "t_dtw": 2990}]},
@@ -349,18 +349,18 @@ mod tests {
            "tokens": [{"text": " kle", "t_dtw": 3426}, {"text": "bt", "t_dtw": 3436}]}
         ]}"#;
         let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
-        // Ohne Wellenform: Grenze 0,2 s vor dem ersten Wortteil des nächsten Worts.
+        // Without waveform: boundary 0.2 s before the first word part of the next word.
         let t = parse_whisper_json(json).unwrap();
         let w = &t.words;
         assert!(close(w[0].end, 33.28) && close(w[1].start, 33.28), "{:?}", w[0]);
-        assert!(close(w[1].end, 34.06), "nicht vor dem letzten Wortteil: {:?}", w[1]);
-        // Mit Wellenform: Grenze im leisesten Punkt zwischen den Wörtern.
+        assert!(close(w[1].end, 34.06), "not before the last word part: {:?}", w[1]);
+        // With waveform: boundary at the quietest point between the words.
         let mut peaks = vec![0.5f32; 4000];
         for v in &mut peaks[2885..=3320] {
-            *v = 0.001; // Pause nach „Ozeanen“
+            *v = 0.001; // pause after "Ozeanen"
         }
         for v in &mut peaks[3407..=3410] {
-            *v = 0.01; // kurzes Tal zwischen „Wasserstoffeis“ und „klebt“
+            *v = 0.01; // short dip between "Wasserstoffeis" and "klebt"
         }
         let t = parse_whisper_json_with_audio(json, Some(&peaks)).unwrap();
         let w = &t.words;
@@ -374,7 +374,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tcf_wav_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.wav");
-        // 0,2 s Mono 16 kHz: erst still, dann laut.
+        // 0.2 s mono 16 kHz: silent first, then loud.
         let samples: Vec<i16> = (0..3200).map(|i| if i < 1600 { 0 } else { 16384 }).collect();
         let data: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
         let mut wav = Vec::new();
@@ -404,12 +404,12 @@ mod tests {
         assert_eq!(dtw_preset(Path::new("/m/ggml-small.bin")).as_deref(), Some("small"));
         assert_eq!(dtw_preset(Path::new("ggml-large-v3-turbo.bin")).as_deref(), Some("large.v3.turbo"));
         assert_eq!(dtw_preset(Path::new("ggml-base.en.bin")).as_deref(), Some("base.en"));
-        assert_eq!(dtw_preset(Path::new("mein-modell.bin")), None);
+        assert_eq!(dtw_preset(Path::new("my-model.bin")), None);
     }
 
     #[test]
     fn parses_progress_lines() {
         assert_eq!(parse_progress("whisper_print_progress_callback: progress =  45%"), Some(0.45));
-        assert_eq!(parse_progress("irgendwas"), None);
+        assert_eq!(parse_progress("anything"), None);
     }
 }

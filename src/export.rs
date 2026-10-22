@@ -1,4 +1,4 @@
-//! Export in verschiedene Größen/Formate sowie Untertitel (SRT).
+//! Export to various sizes/formats as well as subtitles (SRT).
 
 use crate::media::Tools;
 use crate::project::{FitMode, Project};
@@ -11,17 +11,17 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// (Anzeigename, Dateikürzel, Breite, Höhe). 0×0 = Projektgröße.
+/// (display name, file suffix, width, height). 0×0 = project size.
 pub const PRESETS: &[(&str, &str, u32, u32)] = &[
-    ("Projektgröße (Original)", "original", 0, 0),
+    ("Project size (original)", "original", 0, 0),
     ("4K UHD – 3840×2160", "4k", 3840, 2160),
     ("1440p – 2560×1440", "1440p", 2560, 1440),
     ("Full HD – 1920×1080", "1080p", 1920, 1080),
     ("HD – 1280×720", "720p", 1280, 720),
     ("SD – 854×480", "480p", 854, 480),
-    ("Hochkant 9:16 – 1080×1920 (Reels/TikTok/Shorts)", "9x16", 1080, 1920),
-    ("Quadrat 1:1 – 1080×1080", "1x1", 1080, 1080),
-    ("Hochformat 4:5 – 1080×1350", "4x5", 1080, 1350),
+    ("Vertical 9:16 – 1080×1920 (Reels/TikTok/Shorts)", "9x16", 1080, 1920),
+    ("Square 1:1 – 1080×1080", "1x1", 1080, 1080),
+    ("Portrait 4:5 – 1080×1350", "4x5", 1080, 1350),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,10 +37,10 @@ impl Codec {
 
     pub fn label(self) -> &'static str {
         match self {
-            Codec::H264 => "H.264 (MP4, kompatibel)",
-            Codec::H265 => "H.265/HEVC (MP4, kleiner)",
-            Codec::H264Hardware => "H.264 Hardware (schnell, macOS)",
-            Codec::ProRes => "ProRes 422 (MOV, Schnitt-Qualität)",
+            Codec::H264 => "H.264 (MP4, compatible)",
+            Codec::H265 => "H.265/HEVC (MP4, smaller)",
+            Codec::H264Hardware => "H.264 hardware (fast, macOS)",
+            Codec::ProRes => "ProRes 422 (MOV, editing quality)",
         }
     }
 
@@ -54,11 +54,11 @@ impl Codec {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AspectHandling {
-    /// Wie im Clip eingestellt.
+    /// As set on the clip.
     AsClip,
-    /// Ganzes Bild mit Balken.
+    /// Whole picture with bars.
     Fit,
-    /// Bildfüllend zuschneiden.
+    /// Crop to fill the frame.
     Fill,
 }
 
@@ -77,8 +77,8 @@ impl AudioFormat {
         match self {
             AudioFormat::Mp3 => "MP3",
             AudioFormat::M4a => "M4A (AAC)",
-            AudioFormat::Wav => "WAV (unkomprimiert)",
-            AudioFormat::Flac => "FLAC (verlustfrei)",
+            AudioFormat::Wav => "WAV (uncompressed)",
+            AudioFormat::Flac => "FLAC (lossless)",
         }
     }
 
@@ -91,7 +91,7 @@ impl AudioFormat {
         }
     }
 
-    /// Verlustbehaftet → Bitrate einstellbar.
+    /// Lossy → bitrate adjustable.
     pub fn lossy(self) -> bool {
         matches!(self, AudioFormat::Mp3 | AudioFormat::M4a)
     }
@@ -120,15 +120,15 @@ pub struct ExportJob {
     pub label: String,
     pub kind: ExportKind,
     pub path: PathBuf,
-    /// Lautheit auf −16 LUFS normalisieren.
+    /// Normalize loudness to -16 LUFS.
     pub loudnorm: bool,
 }
 
-/// Führt einen Export aus. `progress` erhält 0..1.
+/// Runs an export. `progress` receives 0..1.
 pub fn run(tools: &Tools, p: &Project, job: &ExportJob, progress: &dyn Fn(f32), cancel: &Arc<AtomicBool>) -> Result<()> {
     let duration = p.duration();
     if duration <= 0.0 {
-        bail!("Die Timeline ist leer.");
+        bail!("The timeline is empty.");
     }
     if let Some(dir) = job.path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -204,7 +204,7 @@ pub fn run(tools: &Tools, p: &Project, job: &ExportJob, progress: &dyn Fn(f32), 
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .context("ffmpeg konnte nicht gestartet werden")?;
+        .context("Failed to start ffmpeg")?;
 
     let mut stderr = child.stderr.take().unwrap();
     let err_thread = std::thread::spawn(move || {
@@ -218,7 +218,7 @@ pub fn run(tools: &Tools, p: &Project, job: &ExportJob, progress: &dyn Fn(f32), 
             let _ = child.kill();
             let _ = child.wait();
             let _ = std::fs::remove_file(&job.path);
-            bail!("Abgebrochen");
+            bail!("Cancelled");
         }
         if let Some(us) = line.strip_prefix("out_time_us=").and_then(|v| v.trim().parse::<f64>().ok()) {
             progress(((us / 1e6) / graph.duration).clamp(0.0, 0.999) as f32);
@@ -227,14 +227,14 @@ pub fn run(tools: &Tools, p: &Project, job: &ExportJob, progress: &dyn Fn(f32), 
     let status = child.wait()?;
     let err = err_thread.join().unwrap_or_default();
     if !status.success() {
-        bail!("ffmpeg-Fehler:\n{}", err.lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n"));
+        bail!("ffmpeg error:\n{}", err.lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n"));
     }
     progress(1.0);
     Ok(())
 }
 
-/// Untertitel aus dem Transkript der Hauptspur – mit den Zeiten nach dem Schnitt.
-/// Dieselben Zeilen wie beim Einbrennen (Zeichenlimit aus dem Untertitel-Stil).
+/// Subtitles from the main track's transcript - with the timings after cutting.
+/// Same lines as when burning in (character limit from the subtitle style).
 pub fn build_srt(p: &Project) -> String {
     crate::subtitles::cues(p, p.subtitles.max_chars)
         .iter()
@@ -278,10 +278,10 @@ mod tests {
         });
         let main = p.main_track();
         let c = p.add_clip(id, main, 0.0).unwrap();
-        p.set_tokens_deleted(c, 1, 1, true); // „liebe“ raus
+        p.set_tokens_deleted(c, 1, 1, true); // remove "liebe"
         let srt = build_srt(&p);
-        // „liebe“ (1.0–2.0) mit Puffer → 1.0333–1.9667 entfernt (0.9333 s);
-        // Zeile steht 0,4 s länger, endet aber vor der nächsten (2,067 − 0,04).
+        // "liebe" (1.0-2.0) with padding → 1.0333-1.9667 removed (0.9333 s);
+        // the line stays 0.4 s longer but ends before the next one (2.067 - 0.04).
         assert!(srt.starts_with("1\n00:00:00,000 --> 00:00:02,027\nHallo Leute.\n"), "{srt}");
         assert!(srt.contains("2\n00:00:02,067 --> "), "{srt}");
     }
@@ -308,7 +308,7 @@ mod e2e {
         out.stdout
     }
 
-    /// Mittlere Helligkeit eines Bildausschnitts.
+    /// Mean brightness of an image region.
     fn region_mean(px: &[u8], w: u32, x0: u32, y0: u32, x1: u32, y1: u32) -> f64 {
         let mut sum = 0u64;
         let mut n = 0u64;
@@ -331,7 +331,7 @@ mod e2e {
         std::fs::create_dir_all(&dir).unwrap();
         let tools = Tools { ffmpeg: "ffmpeg".into(), ffprobe: "ffprobe".into() };
 
-        // Hauptvideo: dunkelgrau, Ton: 1 s Ton / 1 s Stille im Wechsel (6 s).
+        // Main video: dark gray, audio: alternating 1 s tone / 1 s silence (6 s).
         let main_src = dir.join("main.mp4");
         assert!(Command::new("ffmpeg")
             .args(["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x202020:s=640x360:r=30:d=6"])
@@ -341,7 +341,7 @@ mod e2e {
             .status()
             .unwrap()
             .success());
-        // PiP: weiß
+        // PiP: white
         let pip_src = dir.join("pip.mp4");
         assert!(Command::new("ffmpeg")
             .args(["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=white:s=320x180:r=30:d=6"])
@@ -366,14 +366,14 @@ mod e2e {
         let c = p.add_clip(1, main, 0.0).unwrap();
         let v2 = p.video_tracks()[1].id;
         let pip = p.add_clip(2, v2, 1.0).unwrap();
-        p.clip_mut(pip).unwrap().src_out = 1.0; // PiP sichtbar von 1.0 bis 2.0
+        p.clip_mut(pip).unwrap().src_out = 1.0; // PiP visible from 1.0 to 2.0
         p.clip_mut(pip).unwrap().transform.border = 0.0;
         p.place_pip(pip, crate::project::PipPreset::TopLeft);
 
-        // Stille raus (ohne Rand): 6 s → 3 s
+        // Remove silence (no padding): 6 s → 3 s
         assert_eq!(p.apply_silence_removal(c, 0.0, 0.5), 3);
         let d = p.duration();
-        assert!((d - 3.0).abs() < 0.07, "Dauer {d}");
+        assert!((d - 3.0).abs() < 0.07, "duration {d}");
 
         let job = ExportJob {
             label: "9x16".into(),
@@ -386,16 +386,16 @@ mod e2e {
         assert_eq!((out.width, out.height), (360, 640));
         assert!((out.duration - d).abs() < 0.1, "{} vs {d}", out.duration);
 
-        // PiP oben links: bei 0.5 s noch nicht da, bei 1.5 s sichtbar (weiß), bei 2.5 s wieder weg.
+        // PiP top left: not there yet at 0.5 s, visible (white) at 1.5 s, gone again at 2.5 s.
         let pip_t = p.clip(pip).unwrap().transform;
         let (x0, y0) = ((pip_t.x * 360.0) as u32 + 4, (pip_t.y * 640.0) as u32 + 4);
         let region = |t: f64| region_mean(&frame_rgb(&job.path, t, 360, 640), 360, x0, y0, x0 + 20, y0 + 20);
-        assert!(region(0.5) < 80.0, "PiP zu früh sichtbar");
-        assert!(region(1.5) > 200.0, "PiP fehlt");
-        assert!(region(2.5) < 80.0, "PiP zu lange sichtbar");
+        assert!(region(0.5) < 80.0, "PiP visible too early");
+        assert!(region(1.5) > 200.0, "PiP missing");
+        assert!(region(2.5) < 80.0, "PiP visible too long");
 
-        // Audio-Export + Untertitel-Job laufen ebenfalls
-        // Audio-Export in allen Formaten (eins davon mit Lautheits-Normalisierung)
+        // Audio export + subtitle job run as well
+        // Audio export in all formats (one of them with loudness normalization)
         for (i, format) in AudioFormat::ALL.into_iter().enumerate() {
             let job = ExportJob {
                 label: format.label().into(),

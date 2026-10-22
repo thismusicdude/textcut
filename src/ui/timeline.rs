@@ -1,4 +1,4 @@
-//! Timeline mit Spuren, Clips, Wellenform, Schnittmarken und Abspielkopf.
+//! Timeline with tracks, clips, waveform, cut markers and playhead.
 
 use super::style;
 use crate::app::{App, Focus};
@@ -25,9 +25,9 @@ struct ClipDrag {
 }
 
 pub struct TimelineUi {
-    /// Pixel pro Sekunde.
+    /// Pixels per second.
     pub pps: f32,
-    /// Sichtbarer Anfang in Sekunden.
+    /// Visible start in seconds.
     pub scroll: f64,
     pub snapping: bool,
     drag: Option<ClipDrag>,
@@ -54,14 +54,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
 fn toolbar(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        if ui.button("⏮").on_hover_text("Zum Anfang (Pos1)").clicked() {
+        if ui.button("⏮").on_hover_text("Go to start (Home)").clicked() {
             app.seek(0.0);
         }
         let play = if app.is_playing() { "⏸" } else { "▶" };
-        if ui.add(egui::Button::new(egui::RichText::new(play).size(16.0)).min_size(Vec2::new(36.0, 0.0))).on_hover_text("Abspielen/Pause (Leertaste)").clicked() {
+        if ui.add(egui::Button::new(egui::RichText::new(play).size(16.0)).min_size(Vec2::new(36.0, 0.0))).on_hover_text("Play/Pause (Space)").clicked() {
             app.toggle_play();
         }
-        if ui.button("⏭").on_hover_text("Zum Ende (Ende)").clicked() {
+        if ui.button("⏭").on_hover_text("Go to end (End)").clicked() {
             app.seek(app.project.duration());
         }
         ui.label(
@@ -70,45 +70,45 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
                 .size(14.0),
         );
         ui.separator();
-        if ui.button("✂ Teilen").on_hover_text("Clip am Abspielkopf teilen (S)").clicked() {
+        if ui.button("✂ Split").on_hover_text("Split clip at playhead (S)").clicked() {
             app.split_at_playhead();
         }
         let has_sel = app.selected_clip.is_some();
-        if ui.add_enabled(has_sel, egui::Button::new("🗑 Löschen")).on_hover_text("Ausgewählten Clip löschen (Entf)").clicked() {
+        if ui.add_enabled(has_sel, egui::Button::new("🗑 Delete")).on_hover_text("Delete selected clip (Del)").clicked() {
             app.delete_selected_clip();
         }
-        if ui.add_enabled(has_sel, egui::Button::new("📋 Duplizieren")).on_hover_text("Cmd/Strg+D").clicked() {
+        if ui.add_enabled(has_sel, egui::Button::new("📋 Duplicate")).on_hover_text("Cmd/Ctrl+D").clicked() {
             app.duplicate_selected_clip();
         }
-        if ui.add_enabled(has_sel, egui::Button::new("🔇 Stille (Clip)")).on_hover_text("Stille nur aus diesem Clip entfernen").clicked() {
+        if ui.add_enabled(has_sel, egui::Button::new("🔇 Silence (clip)")).on_hover_text("Remove silence from this clip only").clicked() {
             if let Some(id) = app.selected_clip {
                 app.remove_silence(vec![id]);
             }
         }
         ui.separator();
-        if ui.button("⟲").on_hover_text("Rückgängig (Cmd/Strg+Z)").clicked() {
+        if ui.button("⟲").on_hover_text("Undo (Cmd/Ctrl+Z)").clicked() {
             app.undo();
         }
-        if ui.button("⟳").on_hover_text("Wiederholen (Cmd/Strg+Shift+Z)").clicked() {
+        if ui.button("⟳").on_hover_text("Redo (Cmd/Ctrl+Shift+Z)").clicked() {
             app.redo();
         }
         ui.separator();
         let ct = app.project.clip_transition;
-        let label = if ct.video || ct.audio { format!("🎞 Übergänge: {:.0} ms", ct.ms) } else { "🎞 Übergänge: aus".into() };
+        let label = if ct.video || ct.audio { format!("🎞 Transitions: {:.0} ms", ct.ms) } else { "🎞 Transitions: off".into() };
         ui.menu_button(label, |ui| clip_transition_settings(app, ui))
             .response
-            .on_hover_text("Weiche Übergänge, wo zwei Clips auf einer Spur aneinanderstoßen");
+            .on_hover_text("Smooth transitions where two clips meet on a track");
         ui.separator();
-        if !app.project.is_audio() && ui.button("+ Videospur").clicked() {
+        if !app.project.is_audio() && ui.button("+ Video track").clicked() {
             app.checkpoint();
             app.project.add_track(TrackKind::Video);
         }
-        if ui.button("+ Audiospur").clicked() {
+        if ui.button("+ Audio track").clicked() {
             app.checkpoint();
             app.project.add_track(TrackKind::Audio);
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("⬌ Einpassen").clicked() {
+            if ui.button("⬌ Fit").clicked() {
                 let w = (ui.available_width() + 400.0).max(200.0);
                 let d = app.project.duration().max(1.0);
                 app.timeline_ui.pps = ((w - HEADER_W) as f64 / (d * 1.05)) as f32;
@@ -133,7 +133,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
     let fps = app.project.fps;
     let main = app.project.main_track();
 
-    // Zeilenlayout: Videospuren von oben (höchste) nach unten (V1), dann Audiospuren.
+    // Row layout: video tracks from top (highest) to bottom (V1), then audio tracks.
     let mut order: Vec<(Id, TrackKind)> =
         app.project.video_tracks().iter().rev().map(|t| (t.id, t.kind)).collect();
     order.extend(app.project.audio_tracks().iter().map(|t| (t.id, t.kind)));
@@ -154,7 +154,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
     let lane_left = rect.left() + HEADER_W;
     let tl = &mut app.timeline_ui;
 
-    // Scrollen & Zoomen
+    // Scrolling & zooming
     if bg_resp.hovered() || ui.rect_contains_pointer(rect) {
         let (delta, zoom, ptr) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
         if (zoom - 1.0).abs() > 1e-3 {
@@ -173,14 +173,14 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
     let x_of = |t: f64| lane_left + ((t - scroll) as f32) * pps;
     let t_of = |x: f32| scroll + ((x - lane_left) / pps) as f64;
 
-    // Hintergrund
+    // Background
     painter.rect_filled(rect, 0.0, Color32::from_gray(22));
     for (i, row) in rows.iter().enumerate() {
         let shade = if i % 2 == 0 { 30 } else { 34 };
         painter.rect_filled(row.rect, 0.0, Color32::from_gray(shade));
     }
 
-    // Lineal
+    // Ruler
     let ruler = Rect::from_min_size(Pos2::new(lane_left, rect.top()), Vec2::new(rect.width() - HEADER_W, RULER_H));
     painter.rect_filled(ruler, 0.0, Color32::from_gray(40));
     let step = [0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0]
@@ -204,7 +204,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
         t += step;
     }
 
-    // Lineal: Klicken/Ziehen setzt den Abspielkopf
+    // Ruler: click/drag sets the playhead
     let ruler_resp = ui.interact(ruler, ui.id().with("ruler"), Sense::click_and_drag());
     if ruler_resp.is_pointer_button_down_on() {
         if let Some(p) = ruler_resp.interact_pointer_pos() {
@@ -219,7 +219,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
         app.timeline_ui.scrubbing = false;
     }
 
-    // Klick auf leere Fläche: Abspielkopf setzen, Auswahl aufheben
+    // Click on empty area: set playhead, clear selection
     if bg_resp.clicked() {
         if let Some(p) = bg_resp.interact_pointer_pos() {
             if p.x > lane_left {
@@ -230,7 +230,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
         }
     }
 
-    // Spurköpfe
+    // Track headers
     for row in &rows {
         let head = Rect::from_min_size(row.rect.min, Vec2::new(HEADER_W - 4.0, row.rect.height()));
         painter.rect_filled(head, 0.0, Color32::from_gray(44));
@@ -244,9 +244,9 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
             style::track_color(is_main, Some(row.kind)),
         );
         if is_main {
-            painter.text(head.left_center() + Vec2::new(6.0, 8.0), Align2::LEFT_CENTER, "Haupt", FontId::proportional(9.0), Color32::GRAY);
+            painter.text(head.left_center() + Vec2::new(6.0, 8.0), Align2::LEFT_CENTER, "Main", FontId::proportional(9.0), Color32::GRAY);
         }
-        // Umschalter: Ausblenden (Video) / Stumm (Audio)
+        // Toggle: hide (video) / mute (audio)
         let (icon, active) = match row.kind {
             TrackKind::Video => (if track.hidden { "🚫" } else { "👁" }, track.hidden),
             TrackKind::Audio => (if track.muted { "🔇" } else { "🔊" }, track.muted),
@@ -267,7 +267,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
         head_resp.context_menu(|ui| {
             let mut extra = false;
             if row.kind == TrackKind::Video {
-                if ui.button(if track.muted { "🔊 Ton einschalten" } else { "🔇 Ton der Spur stumm" }).clicked() {
+                if ui.button(if track.muted { "🔊 Unmute audio" } else { "🔇 Mute track audio" }).clicked() {
                     app.checkpoint();
                     if let Some(t) = app.project.track_mut(row.track) {
                         t.muted = !t.muted;
@@ -279,7 +279,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
             if extra {
                 ui.separator();
             }
-            if ui.add_enabled(!is_main, egui::Button::new("🗑 Spur entfernen")).clicked() {
+            if ui.add_enabled(!is_main, egui::Button::new("🗑 Remove track")).clicked() {
                 app.checkpoint();
                 if !app.project.remove_track(row.track) {
                     app.drop_checkpoint();
@@ -312,7 +312,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
             draw_order.push((clip.id, r));
         }
     }
-    // Gezogener Clip zuletzt (oben)
+    // Dragged clip last (on top)
     draw_order.sort_by_key(|(id, _)| Some(*id) == dragging_id);
 
     for (clip_id, r) in &draw_order {
@@ -329,7 +329,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
             clip_painter.rect_stroke(*r, 4.0, Stroke::new(2.0, Color32::WHITE), StrokeKind::Inside);
         }
 
-        // Wellenform
+        // Waveform
         if let Some(m) = media.filter(|m| m.waveform.is_some()) {
             let kept = clip.kept(fps);
             let mid_y = r.bottom() - r.height() * 0.28;
@@ -355,14 +355,14 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
             }
         }
 
-        // Schnittmarken an den Übergängen behaltener Stücke
+        // Cut markers at the boundaries between kept segments
         let segs = clip.segments(fps);
         for (ts, _) in segs.iter().skip(1) {
             let x = x_of(*ts);
             clip_painter.line_segment([Pos2::new(x, r.top()), Pos2::new(x, r.top() + r.height() * 0.45)], Stroke::new(1.5, style::CUT));
         }
 
-        // Titel
+        // Title
         let name = media.map(|m| m.name.as_str()).unwrap_or("?");
         let mut label = name.to_string();
         if clip.transform.fit == FitMode::Custom && kind == Some(TrackKind::Video) {
@@ -384,7 +384,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
             );
         }
 
-        // Interaktion: Körper (verschieben) und Ränder (trimmen)
+        // Interaction: body (move) and edges (trim)
         let body = ui.interact(*r, ui.id().with(("clip", clip_id)), Sense::click_and_drag());
         let left = Rect::from_min_max(r.min, Pos2::new(r.left() + EDGE, r.bottom()));
         let right = Rect::from_min_max(Pos2::new(r.right() - EDGE, r.top()), r.max);
@@ -426,7 +426,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
         });
     }
 
-    // Übergänge zwischen Clips markieren (Fliege über der Schnittstelle).
+    // Mark transitions between clips (bow tie over the cut point).
     for (clip_id, r) in &draw_order {
         let Some(clip) = app.project.clip(*clip_id) else { continue };
         let e = app.project.clip_edges(clip).start;
@@ -434,7 +434,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
             continue;
         }
         let x = x_of(clip.start);
-        // Überblenden: ±Handle um die Schnittstelle; über Schwarz: je eine Blende davor/danach.
+        // Crossfade: ±handle around the cut point; via black: one fade each before/after.
         let half = if e.extend > 0.0 { e.extend } else { e.audio_fade.max(e.video_fade) };
         let w = (half as f32 * pps).max(4.0);
         let (top, bot) = (r.top() + 1.0, r.bottom() - 1.0);
@@ -454,7 +454,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
         action.run(app, id);
     }
 
-    // Drag-Logik
+    // Drag logic
     if let Some((id, mode, grab_t)) = drag_start {
         if let Some(orig) = app.project.clip(id).cloned() {
             app.checkpoint();
@@ -485,7 +485,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
         }
     }
 
-    // Abspielkopf
+    // Playhead
     let px = x_of(app.playhead);
     if px >= lane_left && px <= rect.right() {
         painter.line_segment([Pos2::new(px, rect.top()), Pos2::new(px, rect.bottom())], Stroke::new(2.0, style::PLAYHEAD));
@@ -493,7 +493,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
         painter.add(egui::Shape::convex_polygon(tri, style::PLAYHEAD, Stroke::NONE));
     }
 
-    // Abspielkopf im Blick halten
+    // Keep the playhead in view
     if app.is_playing() {
         let tl = &mut app.timeline_ui;
         let visible = ((rect.right() - lane_left) / tl.pps) as f64;
@@ -503,7 +503,7 @@ fn tracks(app: &mut App, ui: &mut egui::Ui) {
     }
 }
 
-/// Wendet eine Maus-Verschiebung `dt` auf den gezogenen Clip an.
+/// Applies a mouse offset `dt` to the dragged clip.
 fn apply_drag(app: &mut App, dt: f64, target_row: Option<(Id, TrackKind)>, pps: f32) {
     let Some(drag) = &app.timeline_ui.drag else { return };
     let (id, mode, orig) = (drag.clip, drag.mode, drag.orig.clone());
@@ -514,7 +514,7 @@ fn apply_drag(app: &mut App, dt: f64, target_row: Option<(Id, TrackKind)>, pps: 
     let src_dur = app.project.media(orig.source).map(|m| m.duration).unwrap_or(orig.src_out);
     let threshold = 8.0 / pps as f64;
 
-    // Fangpunkte: Abspielkopf, 0, Kanten aller anderen Clips
+    // Snap points: playhead, 0, edges of all other clips
     let mut points = vec![0.0, app.playhead];
     for c in &app.project.clips {
         if c.id != id {
@@ -542,7 +542,7 @@ fn apply_drag(app: &mut App, dt: f64, target_row: Option<(Id, TrackKind)>, pps: 
             if let Some((track, kind)) = target_row {
                 let orig_kind = app.project.track(orig.track).map(|t| t.kind);
                 if Some(kind) == orig_kind && track != clip.track {
-                    // Spurwechsel: Hauptspur = Vollbild, andere Videospuren = Bild-in-Bild.
+                    // Track change: main track = full frame, other video tracks = picture-in-picture.
                     if kind == TrackKind::Video {
                         if track == main {
                             clip.transform.fit = FitMode::Fit;
@@ -587,7 +587,7 @@ fn apply_drag(app: &mut App, dt: f64, target_row: Option<(Id, TrackKind)>, pps: 
     if became_pip {
         app.project.place_pip(id, PipPreset::BottomRight);
     }
-    // Hauptspur beim Trimmen sofort nachziehen; beim Verschieben erst nach dem Loslassen.
+    // Repack the main track immediately when trimming; when moving, only after release.
     if mode != DragMode::Move {
         app.project.repack_main();
     }
@@ -610,22 +610,22 @@ enum ClipAction {
 impl ClipAction {
     fn menu(is_main: bool, is_video: bool) -> Vec<(&'static str, ClipAction)> {
         let mut v = vec![
-            ("✂ Am Abspielkopf teilen", ClipAction::Split),
-            ("📋 Duplizieren", ClipAction::Duplicate),
-            ("🔇 Stille entfernen", ClipAction::RemoveSilence),
-            ("↺ Stille-Schnitte zurücksetzen", ClipAction::RestoreSilence),
-            ("↺ Alle Schnitte zurücksetzen", ClipAction::ResetCuts),
-            ("📝 Transkribieren", ClipAction::Transcribe),
-            ("🔈 Stumm an/aus", ClipAction::Mute),
+            ("✂ Split at playhead", ClipAction::Split),
+            ("📋 Duplicate", ClipAction::Duplicate),
+            ("🔇 Remove silence", ClipAction::RemoveSilence),
+            ("↺ Reset silence cuts", ClipAction::RestoreSilence),
+            ("↺ Reset all cuts", ClipAction::ResetCuts),
+            ("📝 Transcribe", ClipAction::Transcribe),
+            ("🔈 Toggle mute", ClipAction::Mute),
         ];
         if is_video {
             if is_main {
-                v.push(("🖼 Als Bild-in-Bild auf V2", ClipAction::ToPip));
+                v.push(("🖼 As picture-in-picture on V2", ClipAction::ToPip));
             } else {
-                v.push(("⬇ Auf Hauptspur verschieben", ClipAction::ToMain));
+                v.push(("⬇ Move to main track", ClipAction::ToMain));
             }
         }
-        v.push(("🗑 Löschen", ClipAction::Delete));
+        v.push(("🗑 Delete", ClipAction::Delete));
         v
     }
 
@@ -687,36 +687,36 @@ impl ClipAction {
     }
 }
 
-/// Einstellungen für Übergänge zwischen Clips (mit Vorschau des Verlaufs).
+/// Settings for transitions between clips (with a preview of the curve).
 pub fn clip_transition_settings(app: &mut App, ui: &mut egui::Ui) {
     ui.set_min_width(320.0);
     let before = app.project.clip_transition;
     let mut t = before;
-    ui.label(egui::RichText::new("Übergänge zwischen Clips").strong());
+    ui.label(egui::RichText::new("Transitions between clips").strong());
     ui.label(
         egui::RichText::new(
-            "Gilt überall, wo zwei Clips auf derselben Spur direkt aneinanderstoßen\n(z.B. nach „Teilen“ oder auf der Hauptspur). Die Timeline-Länge bleibt gleich.",
+            "Applies wherever two clips meet directly on the same track\n(e.g. after \"Split\" or on the main track). The timeline length stays the same.",
         )
         .small()
         .weak(),
     );
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        ui.label("Aktiv für:");
+        ui.label("Active for:");
         if !app.project.is_audio() {
-            ui.checkbox(&mut t.video, "Videospuren (Bild + Ton)");
+            ui.checkbox(&mut t.video, "Video tracks (picture + audio)");
         }
-        ui.checkbox(&mut t.audio, "Audiospuren");
+        ui.checkbox(&mut t.audio, "Audio tracks");
     });
     let active = t.video || t.audio;
     ui.add_enabled_ui(active, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Art:");
+            ui.label("Type:");
             for s in [TransitionStyle::Dissolve, TransitionStyle::DipToBlack] {
                 ui.selectable_value(&mut t.style, s, s.label());
             }
         });
-        ui.add(egui::Slider::new(&mut t.ms, 50.0..=4000.0).logarithmic(true).suffix(" ms").text("Länge"));
+        ui.add(egui::Slider::new(&mut t.ms, 50.0..=4000.0).logarithmic(true).suffix(" ms").text("Duration"));
         ui.horizontal(|ui| {
             for ms in [250.0, 500.0, 1000.0, 2000.0] {
                 if ui.small_button(format!("{ms:.0}")).clicked() {
@@ -724,15 +724,15 @@ pub fn clip_transition_settings(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
         });
-        egui::ComboBox::from_label("Kurve (Ton)").selected_text(t.curve.label()).width(220.0).show_ui(ui, |ui| {
+        egui::ComboBox::from_label("Curve (audio)").selected_text(t.curve.label()).width(220.0).show_ui(ui, |ui| {
             for c in FadeCurve::ALL {
                 ui.selectable_value(&mut t.curve, c, c.label());
             }
         });
         transition_preview(ui, &t);
         let hint = match t.style {
-            TransitionStyle::Dissolve => "Nutzt Material vor/nach den Clip-Grenzen. Fehlt es (Dateianfang/-ende), wird über Schwarz geblendet.",
-            TransitionStyle::DipToBlack => "Clip A blendet aus, dann blendet Clip B ein.",
+            TransitionStyle::Dissolve => "Uses material before/after the clip boundaries. If it is missing (start/end of file), fades via black.",
+            TransitionStyle::DipToBlack => "Clip A fades out, then clip B fades in.",
         };
         ui.label(egui::RichText::new(hint).small().weak());
     });
@@ -750,7 +750,7 @@ pub fn clip_transition_settings(app: &mut App, ui: &mut egui::Ui) {
     }
 }
 
-/// Zeichnet Lautstärke-/Deckkraftverlauf von Clip A (aus) und B (ein).
+/// Draws the volume/opacity curve of clip A (out) and B (in).
 fn transition_preview(ui: &mut egui::Ui, t: &crate::project::ClipTransition) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().max(300.0), 70.0), Sense::hover());
     let p = ui.painter_at(rect);
@@ -790,5 +790,5 @@ fn transition_preview(ui: &mut egui::Ui, t: &crate::project::ClipTransition) {
     let font = FontId::proportional(10.0);
     p.text(rect.left_top() + Vec2::new(4.0, 2.0), Align2::LEFT_TOP, "Clip A", font.clone(), style::MAIN_CLIP);
     p.text(rect.right_top() + Vec2::new(-4.0, 2.0), Align2::RIGHT_TOP, "Clip B", font.clone(), style::ACCENT);
-    p.text(Pos2::new(x_of(0.0) + 3.0, rect.bottom() - 2.0), Align2::LEFT_BOTTOM, "Schnitt", font, Color32::GRAY);
+    p.text(Pos2::new(x_of(0.0) + 3.0, rect.bottom() - 2.0), Align2::LEFT_BOTTOM, "Cut", font, Color32::GRAY);
 }

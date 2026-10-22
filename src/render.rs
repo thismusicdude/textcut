@@ -1,9 +1,9 @@
-//! Übersetzt die Timeline in einen ffmpeg-`filter_complex`.
+//! Translates the timeline into an ffmpeg `filter_complex`.
 //!
-//! Vorschau und Export verwenden denselben Graphen, damit die Vorschau exakt
-//! dem Ergebnis entspricht. Pro Clip wird die Quelldatei einmal geöffnet und
-//! die behaltenen Bereiche werden in einem Durchlauf per `select`/`aselect`
-//! ausgewählt – das bleibt auch bei Hunderten Text-Schnitten effizient.
+//! Preview and export use the same graph so the preview matches the result
+//! exactly. Each clip opens its source file once, and the kept ranges are
+//! selected in a single pass via `select`/`aselect` - this stays efficient
+//! even with hundreds of text cuts.
 
 use crate::project::{FitMode, Project, Range, TrackKind, snap};
 use crate::util::even;
@@ -14,18 +14,18 @@ pub const SAMPLE_RATE: u32 = 48_000;
 pub struct RenderSpec {
     pub width: u32,
     pub height: u32,
-    /// Timeline-Ausschnitt.
+    /// Timeline range.
     pub from: f64,
     pub to: f64,
     pub video: bool,
     pub audio: bool,
-    /// Ersetzt Fit/Fill der Vollbild-Clips (z.B. „Füllen“ für 9:16-Export).
+    /// Overrides fit/fill of full-frame clips (e.g. "Fill" for a 9:16 export).
     pub fit_override: Option<FitMode>,
-    /// "yuv420p" für Export, "rgba" für die Vorschau.
+    /// "yuv420p" for export, "rgba" for the preview.
     pub pix_fmt: &'static str,
-    /// Optional reduzierte Ausgabe-Framerate (Vorschau).
+    /// Optional reduced output frame rate (preview).
     pub out_fps: Option<u32>,
-    /// Lautheit auf −16 LUFS normalisieren (Podcast-Standard).
+    /// Normalize loudness to -16 LUFS (podcast standard).
     pub loudnorm: bool,
 }
 
@@ -62,12 +62,12 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
     for track in tracks {
         for clip in p.clips_on(track.id) {
             let Some(media) = p.media(clip.source) else { continue };
-            // Übergänge zu angrenzenden Clips: ggf. über die Ränder hinaus verlängern.
+            // Transitions to adjacent clips: extend beyond the edges if needed.
             let edges = p.clip_edges(clip);
             let all_segs = p.segments_with_edges(clip, &edges);
             let Some(&(ext_start, _)) = all_segs.first() else { continue };
             let ext_end = all_segs.last().map(|(t, r)| t + r.len()).unwrap_or(ext_start);
-            // Behaltene Stücke, auf das Fenster zugeschnitten: (Timeline-Start, Quellbereich).
+            // Kept pieces, clipped to the window: (timeline start, source range).
             let segs: Vec<(f64, Range)> = all_segs
                 .into_iter()
                 .filter_map(|(ts, r)| {
@@ -103,8 +103,8 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
 
             let offset = segs[0].0 - from;
             let out_len: f64 = segs.iter().map(|(_, r)| r.len()).sum();
-            // Blenden am Anfang/Ende: Übergänge haben Vorrang vor den Clip-Blenden.
-            // (Länge Bild, Länge Ton) – relativ zum Beginn dieser Ebene im Fenster.
+            // Fades at start/end: transitions take precedence over clip fades.
+            // (video length, audio length) - relative to the start of this layer in the window.
             let (v_in, a_in) =
                 if edges.start.is_some() { (edges.start.video_fade, edges.start.audio_fade) } else { (clip.fade_in, clip.fade_in) };
             let (v_out, a_out) =
@@ -116,7 +116,7 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
             };
             let (vfade_in, vfade_out) = (fade_in(v_in), fade_out(v_out));
             let (afade_in, afade_out) = (fade_in(a_in), fade_out(a_out));
-            // Übergänge nutzen die eingestellte Kurve, normale Clip-Blenden linear.
+            // Transitions use the configured curve, regular clip fades are linear.
             let curve_in = if edges.start.is_some() { edges.curve.afade_curve() } else { "tri" };
             let curve_out = if edges.end.is_some() { edges.curve.afade_curve() } else { "tri" };
 
@@ -190,8 +190,8 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
                 if let Some((st, d)) = afade_out {
                     post += &format!(",afade=t=out:st={st:.3}:d={d:.3}:curve={curve_out}");
                 }
-                // Weiche Übergänge: Lautstärke-Hüllkurve, die an jeder Schnittstelle
-                // auf 0 abtaucht. Läuft in 1-ms-Schritten (asetnsamples=48).
+                // Soft transitions: volume envelope that dips to 0 at every cut point.
+                // Runs in 1 ms steps (asetnsamples=48).
                 let mut envelope = String::new();
                 let tr = p.transition;
                 if tr.enabled && tr.ms > 0.0 {
@@ -216,7 +216,7 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
         }
     }
 
-    // Untertitel als Bildfolge (in Rust gezeichnet, siehe subtitles.rs)
+    // Subtitles as an image sequence (drawn in Rust, see subtitles.rs)
     let mut subs: Option<(usize, u32)> = None;
     if spec.video {
         match crate::subtitles::overlay(p, w, h, from, to) {
@@ -226,7 +226,7 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
                 subs = Some((n_inputs, o.y));
             }
             Ok(None) => {}
-            Err(e) => eprintln!("Untertitel: {e:#}"),
+            Err(e) => eprintln!("Subtitles: {e:#}"),
         }
     }
 
@@ -271,7 +271,7 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
     RenderGraph { args, duration: dur }
 }
 
-/// Vorschaugröße mit gegebener Höhe, passend zum Projektseitenverhältnis.
+/// Preview size for a given height, matching the project aspect ratio.
 pub fn preview_size(p: &Project, height: u32) -> (u32, u32) {
     let h = height.min(p.height.max(2));
     let w = even(p.width as f64 * h as f64 / p.height.max(1) as f64);
@@ -335,11 +335,11 @@ mod tests {
         assert!(fc.contains("select='gte(t,-0.016667)*lt(t,1.983333)+gte(t,3.983333)*lt(t,9.983333)'"), "{fc}");
         assert!(fc.contains("overlay=x="));
         assert!(fc.contains("amix=inputs=3"));
-        assert!(fc.contains("adelay=48000S"), "PiP-Audio startet bei 1 s");
+        assert!(fc.contains("adelay=48000S"), "PiP audio starts at 1 s");
     }
 
-    /// Übergänge zwischen Clips: Überblenden mischt Bild & Ton, „über Schwarz“
-    /// taucht ab – beides ohne die Timeline-Länge zu ändern.
+    /// Transitions between clips: dissolve mixes picture & sound, "dip to black"
+    /// fades out - both without changing the timeline length.
     #[test]
     fn clip_transitions_render() {
         if !ffmpeg_available() {
@@ -425,27 +425,27 @@ mod tests {
         assert!((p.duration() - 4.0).abs() < 1e-9);
         let out = render(&p, "dissolve.mov");
         let (r, _, b) = rgb_at(&out, 1.25);
-        assert!(r > 200.0 && b < 60.0, "vorher rot: {r} {b}");
+        assert!(r > 200.0 && b < 60.0, "red before: {r} {b}");
         let (r, _, b) = rgb_at(&out, 2.0);
-        assert!(r > 80.0 && r < 175.0 && b > 80.0 && b < 175.0, "Mitte gemischt: {r} {b}");
+        assert!(r > 80.0 && r < 175.0 && b > 80.0 && b < 175.0, "mixed in the middle: {r} {b}");
         let (r, _, b) = rgb_at(&out, 2.75);
-        assert!(b > 200.0 && r < 60.0, "danach blau: {r} {b}");
+        assert!(b > 200.0 && r < 60.0, "blue after: {r} {b}");
         let full = rms_at(&out, 0.5);
-        assert!(rms_at(&out, 2.0) > full * 0.6, "Ton wird übergeblendet, kein Loch");
+        assert!(rms_at(&out, 2.0) > full * 0.6, "audio crossfades, no gap");
         let probe = crate::media::probe(&crate::media::Tools { ffmpeg: "ffmpeg".into(), ffprobe: "ffprobe".into() }, &out, 9).unwrap();
-        assert!((probe.duration - 4.0).abs() < 0.05, "Länge unverändert: {}", probe.duration);
+        assert!((probe.duration - 4.0).abs() < 0.05, "length unchanged: {}", probe.duration);
 
         p.clip_transition.style = crate::project::TransitionStyle::DipToBlack;
         let out = render(&p, "dip.mov");
         let (r, g, b) = rgb_at(&out, 2.0);
-        assert!(r + g + b < 40.0, "an der Schnittstelle schwarz: {r} {g} {b}");
-        assert!(rms_at(&out, 2.0) < full * 0.1, "und still");
+        assert!(r + g + b < 40.0, "black at the cut point: {r} {g} {b}");
+        assert!(rms_at(&out, 2.0) < full * 0.1, "and silent");
         let (r, _, _) = rgb_at(&out, 0.5);
-        assert!(r > 200.0, "außerhalb unverändert");
+        assert!(r > 200.0, "unchanged outside");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Weiche Übergänge: Am Schnitt taucht der Pegel auf 0 ab, daneben ist er voll.
+    /// Soft transitions: the level dips to 0 at the cut and is full elsewhere.
     #[test]
     fn soft_transition_dips_audio_at_cut() {
         if !ffmpeg_available() {
@@ -499,31 +499,31 @@ mod tests {
             .unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let samples: Vec<i16> = out.stdout.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
-        assert!((samples.len() as f64 / 48000.0 - 3.0).abs() < 0.01, "Länge unverändert");
-        // Spitzenpegel in einem 4-ms-Fenster um t
+        assert!((samples.len() as f64 / 48000.0 - 3.0).abs() < 0.01, "length unchanged");
+        // Peak level in a 4 ms window around t
         let peak = |t: f64| {
             let i = (t * 48000.0) as usize;
             samples[i - 96..i + 96].iter().map(|s| s.unsigned_abs()).max().unwrap() as f64
         };
         let full = peak(0.5);
-        assert!(full > 1000.0, "Grundpegel {full}");
-        assert!(peak(1.0) < full * 0.06, "am Schnitt still: {} vs {full}", peak(1.0));
-        assert!((peak(0.95) / full - 0.5).abs() < 0.08, "halb ausgeblendet: {}", peak(0.95) / full);
-        assert!((peak(1.05) / full - 0.5).abs() < 0.08, "halb eingeblendet: {}", peak(1.05) / full);
-        assert!(peak(1.2) > full * 0.97, "danach wieder voll");
+        assert!(full > 1000.0, "base level {full}");
+        assert!(peak(1.0) < full * 0.06, "silent at the cut: {} vs {full}", peak(1.0));
+        assert!((peak(0.95) / full - 0.5).abs() < 0.08, "half faded out: {}", peak(0.95) / full);
+        assert!((peak(1.05) / full - 0.5).abs() < 0.08, "half faded in: {}", peak(1.05) / full);
+        assert!(peak(1.2) > full * 0.97, "full again afterwards");
 
-        // Ausgeschaltet: kein Abtauchen
+        // Disabled: no dip
         p.transition.enabled = false;
         let g = build(&p, &spec);
         assert!(!g.args.last().unwrap().contains("eval=frame"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// End-to-End: echtes Rendering mit ffmpeg, prüft die Ergebnisdauer.
+    /// End-to-end: real rendering with ffmpeg, checks the resulting duration.
     #[test]
     fn renders_with_ffmpeg() {
         if !ffmpeg_available() {
-            eprintln!("ffmpeg fehlt – Test übersprungen");
+            eprintln!("ffmpeg missing - test skipped");
             return;
         }
         let dir = std::env::temp_dir().join(format!("tcf_test_{}", std::process::id()));
@@ -589,7 +589,7 @@ mod tests {
             .output()
             .unwrap();
         let frames: u32 = String::from_utf8_lossy(&probe.stdout).trim().parse().unwrap();
-        assert_eq!(frames, 135, "4,5 s × 30 fps");
+        assert_eq!(frames, 135, "4.5 s × 30 fps");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

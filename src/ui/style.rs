@@ -1,4 +1,4 @@
-//! Farben und Grundstil.
+//! Colors and base style.
 
 use crate::project::TrackKind;
 use eframe::egui::{self, Color32, FontId, TextStyle};

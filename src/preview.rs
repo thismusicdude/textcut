@@ -1,7 +1,7 @@
-//! Vorschau: Einzelbilder beim Scrubben und Echtzeit-Wiedergabe mit Ton.
+//! Preview: single frames while scrubbing and real-time playback with audio.
 //!
-//! Beide nutzen den Render-Graphen aus `render.rs` und lesen Rohbilder bzw.
-//! PCM-Audio über Pipes von ffmpeg.
+//! Both use the render graph from `render.rs` and read raw frames or
+//! PCM audio from ffmpeg via pipes.
 
 use crate::project::Project;
 use crate::render::{self, RenderSpec, SAMPLE_RATE};
@@ -38,7 +38,7 @@ fn preview_spec(size: (u32, u32), from: f64, to: f64, video: bool, audio: bool, 
 }
 
 // ---------------------------------------------------------------------------
-// Einzelbilder (Scrubbing)
+// Single frames (scrubbing)
 // ---------------------------------------------------------------------------
 
 struct ScrubRequest {
@@ -47,7 +47,7 @@ struct ScrubRequest {
     time: f64,
 }
 
-/// Hintergrund-Thread, der immer nur die neueste Anfrage rendert.
+/// Background thread that only ever renders the most recent request.
 pub struct ScrubWorker {
     tx: Sender<ScrubRequest>,
     rx: Receiver<Result<Frame, String>>,
@@ -78,7 +78,7 @@ impl ScrubWorker {
         let _ = self.tx.send(ScrubRequest { args: graph.args, size, time });
     }
 
-    /// Neuestes fertiges Bild (falls vorhanden).
+    /// Most recent finished frame (if any).
     pub fn poll(&self) -> Option<Result<Frame, String>> {
         let mut last = None;
         while let Ok(f) = self.rx.try_recv() {
@@ -96,10 +96,10 @@ fn render_single(ffmpeg: &PathBuf, req: &ScrubRequest) -> Result<Frame> {
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
         .output()
-        .context("ffmpeg konnte nicht gestartet werden")?;
+        .context("Could not start ffmpeg")?;
     let need = (req.size.0 * req.size.1 * 4) as usize;
     if out.stdout.len() < need {
-        anyhow::bail!("Vorschau fehlgeschlagen: {}", String::from_utf8_lossy(&out.stderr).trim());
+        anyhow::bail!("Preview failed: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
     let mut rgba = out.stdout;
     rgba.truncate(need);
@@ -107,10 +107,10 @@ fn render_single(ffmpeg: &PathBuf, req: &ScrubRequest) -> Result<Frame> {
 }
 
 // ---------------------------------------------------------------------------
-// Wiedergabe
+// Playback
 // ---------------------------------------------------------------------------
 
-/// PCM-Quelle für rodio, gespeist aus der ffmpeg-Pipe.
+/// PCM source for rodio, fed from the ffmpeg pipe.
 struct PipeSource {
     rx: Receiver<Vec<i16>>,
     buf: Vec<i16>,
@@ -124,7 +124,7 @@ impl Iterator for PipeSource {
         if self.pos >= self.buf.len() {
             match self.rx.recv_timeout(Duration::from_millis(20)) {
                 Ok(b) => self.buf = b,
-                // Puffer leer: kurz Stille einfügen (gerade Länge → Kanäle bleiben korrekt).
+                // Buffer empty: insert a short silence (even length → channels stay aligned).
                 Err(RecvTimeoutError::Timeout) => self.buf = vec![0; 480 * 2],
                 Err(RecvTimeoutError::Disconnected) => return None,
             }
@@ -196,7 +196,7 @@ impl Playback {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .context("ffmpeg konnte nicht gestartet werden")?;
+            .context("Could not start ffmpeg")?;
         let mut stdout = child.stdout.take().unwrap();
         spawn_stderr_collector(&mut child, error.clone());
         children.push(Arc::new(Mutex::new(child)));
@@ -233,7 +233,7 @@ impl Playback {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .context("ffmpeg (Audio) konnte nicht gestartet werden")?;
+                .context("Could not start ffmpeg (audio)")?;
             let mut stdout = child.stdout.take().unwrap();
             spawn_stderr_collector(&mut child, error.clone());
             children.push(Arc::new(Mutex::new(child)));
@@ -282,8 +282,8 @@ impl Playback {
         })
     }
 
-    /// Liefert das anzuzeigende Bild (falls neu), die aktuelle Zeit und ob
-    /// das Ende des Fensters erreicht ist.
+    /// Returns the frame to display (if new), the current time and whether
+    /// the end of the window has been reached.
     pub fn update(&mut self) -> (Option<Frame>, f64, bool) {
         if self.pending.is_none() {
             match self.video_rx.try_recv() {
@@ -291,7 +291,7 @@ impl Playback {
                 Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => {}
             }
         }
-        // Uhr startet, sobald das erste Bild da ist – dann läuft auch der Ton los.
+        // The clock starts as soon as the first frame arrives – audio starts then too.
         if self.clock.is_none() {
             if self.pending.is_some() || self.video_done.load(Ordering::SeqCst) {
                 self.clock = Some(Instant::now());
@@ -304,7 +304,7 @@ impl Playback {
         }
         let now = self.from + self.clock.unwrap().elapsed().as_secs_f64();
         let mut show = None;
-        // Alle fälligen Bilder abholen, nur das neueste anzeigen.
+        // Fetch all due frames, display only the most recent one.
         loop {
             match &self.pending {
                 Some(f) if f.time <= now => {
@@ -414,7 +414,7 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(5));
         }
-        assert!(frames >= 10, "nur {frames} Bilder");
+        assert!(frames >= 10, "only {frames} frames");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

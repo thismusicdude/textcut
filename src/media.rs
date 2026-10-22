@@ -1,4 +1,4 @@
-//! Medienanalyse über ffprobe/ffmpeg: Metadaten, Wellenform, Stille-Erkennung.
+//! Media analysis via ffprobe/ffmpeg: metadata, waveform, silence detection.
 
 use crate::project::{MediaKind, MediaSource, Range};
 use crate::util::command;
@@ -14,26 +14,26 @@ pub struct Tools {
     pub ffprobe: PathBuf,
 }
 
-/// Liest Dauer, Auflösung, Framerate und vorhandene Streams.
+/// Reads duration, resolution, frame rate and available streams.
 pub fn probe(tools: &Tools, path: &Path, id: u64) -> Result<MediaSource> {
     let out = command(&tools.ffprobe)
         .args(["-v", "error", "-print_format", "json", "-show_format", "-show_streams"])
         .arg(path)
         .output()
-        .with_context(|| format!("ffprobe konnte nicht gestartet werden ({})", tools.ffprobe.display()))?;
+        .with_context(|| format!("Could not start ffprobe ({})", tools.ffprobe.display()))?;
     if !out.status.success() {
         bail!("ffprobe: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
     let json: Value = serde_json::from_slice(&out.stdout)?;
     let streams = json["streams"].as_array().cloned().unwrap_or_default();
 
-    // Cover-Bilder in Audiodateien zählen nicht als Video.
+    // Cover images in audio files do not count as video.
     let video = streams.iter().find(|s| {
         s["codec_type"] == "video" && s["disposition"]["attached_pic"].as_i64().unwrap_or(0) == 0
     });
     let audio = streams.iter().find(|s| s["codec_type"] == "audio");
     if video.is_none() && audio.is_none() {
-        bail!("Keine Video- oder Audiospur gefunden");
+        bail!("No video or audio track found");
     }
 
     let parse_f = |v: &Value| v.as_str().and_then(|s| s.parse::<f64>().ok()).or_else(|| v.as_f64());
@@ -42,14 +42,14 @@ pub fn probe(tools: &Tools, path: &Path, id: u64) -> Result<MediaSource> {
         duration = streams.iter().filter_map(|s| parse_f(&s["duration"])).fold(0.0, f64::max);
     }
     if duration <= 0.0 {
-        bail!("Dauer der Datei konnte nicht bestimmt werden");
+        bail!("Could not determine the file duration");
     }
 
     let (mut width, mut height, mut fps) = (0, 0, 0.0);
     if let Some(v) = video {
         width = v["width"].as_u64().unwrap_or(0) as u32;
         height = v["height"].as_u64().unwrap_or(0) as u32;
-        // Hochkant gedrehte Handyvideos: Breite/Höhe tauschen.
+        // Rotated portrait phone videos: swap width/height.
         let rotation = v["side_data_list"]
             .as_array()
             .and_then(|l| l.iter().find_map(|d| d["rotation"].as_f64()))
@@ -86,7 +86,7 @@ fn parse_rate(s: &str) -> Option<f64> {
     (d > 0.0 && n > 0.0).then(|| n / d)
 }
 
-/// Pegelspitzen mit 100 Werten pro Sekunde.
+/// Level peaks at 100 values per second.
 pub fn waveform(tools: &Tools, path: &Path) -> Result<Vec<f32>> {
     let mut child = command(&tools.ffmpeg)
         .args(["-v", "error", "-i"])
@@ -104,14 +104,14 @@ pub fn waveform(tools: &Tools, path: &Path) -> Result<Vec<f32>> {
         .chunks(PER_PEAK)
         .map(|c| c.iter().map(|s| (*s as i32).unsigned_abs()).max().unwrap_or(0) as f32 / 32768.0)
         .collect();
-    // Etwas Kompression, damit leise Sprache sichtbar bleibt.
+    // Some compression so that quiet speech stays visible.
     for p in &mut peaks {
         *p = p.sqrt().min(1.0);
     }
     Ok(peaks)
 }
 
-/// Erkennt Stille via `silencedetect`. `threshold_db` z.B. -35, `min_len` in s.
+/// Detects silence via `silencedetect`. `threshold_db` e.g. -35, `min_len` in s.
 pub fn detect_silence(tools: &Tools, path: &Path, threshold_db: f32, min_len: f64, duration: f64) -> Result<Vec<Range>> {
     let filter = format!("silencedetect=noise={threshold_db}dB:d={min_len}");
     let out = command(&tools.ffmpeg)
@@ -141,7 +141,7 @@ pub fn parse_silences(log: &str, duration: f64) -> Vec<Range> {
             }
         }
     }
-    // Stille bis zum Dateiende hat kein silence_end.
+    // Silence up to the end of the file has no silence_end.
     if let Some(start) = open {
         if duration > start {
             out.push(Range::new(start, duration));
@@ -155,7 +155,7 @@ fn value_after(line: &str, key: &str) -> Option<f64> {
     line[idx + key.len()..].split_whitespace().next()?.trim_end_matches('|').parse().ok()
 }
 
-/// Extrahiert 16 kHz-Mono-WAV für Whisper.
+/// Extracts 16 kHz mono WAV for Whisper.
 pub fn extract_wav16k(tools: &Tools, path: &Path, out: &Path) -> Result<()> {
     let status = command(&tools.ffmpeg)
         .args(["-v", "error", "-y", "-i"])
@@ -166,7 +166,7 @@ pub fn extract_wav16k(tools: &Tools, path: &Path, out: &Path) -> Result<()> {
         .stderr(Stdio::piped())
         .output()?;
     if !status.status.success() {
-        return Err(anyhow!("Audio-Extraktion fehlgeschlagen: {}", String::from_utf8_lossy(&status.stderr).trim()));
+        return Err(anyhow!("Audio extraction failed: {}", String::from_utf8_lossy(&status.stderr).trim()));
     }
     Ok(())
 }

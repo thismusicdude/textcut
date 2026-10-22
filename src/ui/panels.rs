@@ -1,4 +1,4 @@
-//! Menü, Statusleiste, Medienbereich, Inspektor und Vorschau.
+//! Menu, status bar, media panel, inspector and preview.
 
 use super::style;
 use crate::app::{App, Placement, TaskKind};
@@ -12,20 +12,20 @@ pub fn menu_bar(app: &mut App, ctx: &egui::Context) {
             ui.label(RichText::new("⚒ TextCutForge").strong().color(style::ACCENT));
             let mode = if app.project.is_audio() { "🎧 Audio" } else { "🎬 Video" };
             ui.label(RichText::new(mode).small().background_color(egui::Color32::from_gray(50)))
-                .on_hover_text("Projektmodus – „Datei → Neues Projekt“ zum Wechseln");
+                .on_hover_text("Project mode - use \"File → New project\" to switch");
             ui.separator();
-            ui.menu_button("Datei", |ui| {
-                if ui.button("Neues Projekt …").clicked() {
+            ui.menu_button("File", |ui| {
+                if ui.button("New project …").clicked() {
                     app.show_start = true;
                     ui.close_menu();
                 }
-                if ui.button("Projekt öffnen …   ⌘O").clicked() {
+                if ui.button("Open project …   ⌘O").clicked() {
                     app.open_dialog();
                     ui.close_menu();
                 }
                 let recent = app.settings.recent.clone();
                 if !recent.is_empty() {
-                    ui.menu_button("Zuletzt geöffnet", |ui| {
+                    ui.menu_button("Open recent", |ui| {
                         for p in recent {
                             if ui.button(p.display().to_string()).clicked() {
                                 app.open_project(&p);
@@ -34,63 +34,63 @@ pub fn menu_bar(app: &mut App, ctx: &egui::Context) {
                         }
                     });
                 }
-                if ui.button("Speichern   ⌘S").clicked() {
+                if ui.button("Save   ⌘S").clicked() {
                     app.save(false);
                     ui.close_menu();
                 }
-                if ui.button("Speichern unter …   ⇧⌘S").clicked() {
+                if ui.button("Save as …   ⇧⌘S").clicked() {
                     app.save(true);
                     ui.close_menu();
                 }
                 ui.separator();
-                if ui.button("Medien importieren …   ⌘I").clicked() {
+                if ui.button("Import media …   ⌘I").clicked() {
                     app.import_dialog(Placement::Main);
                     ui.close_menu();
                 }
-                if ui.button("Exportieren …   ⌘E").clicked() {
+                if ui.button("Export …   ⌘E").clicked() {
                     app.export_ui.open = true;
                     ui.close_menu();
                 }
                 ui.separator();
-                if ui.button("Einstellungen …").clicked() {
+                if ui.button("Settings …").clicked() {
                     app.show_settings = true;
                     ui.close_menu();
                 }
             });
-            ui.menu_button("Bearbeiten", |ui| {
-                if ui.add_enabled(app.can_undo(), egui::Button::new("Rückgängig   ⌘Z")).clicked() {
+            ui.menu_button("Edit", |ui| {
+                if ui.add_enabled(app.can_undo(), egui::Button::new("Undo   ⌘Z")).clicked() {
                     app.undo();
                     ui.close_menu();
                 }
-                if ui.add_enabled(app.can_redo(), egui::Button::new("Wiederholen   ⇧⌘Z")).clicked() {
+                if ui.add_enabled(app.can_redo(), egui::Button::new("Redo   ⇧⌘Z")).clicked() {
                     app.redo();
                     ui.close_menu();
                 }
                 ui.separator();
-                if ui.button("Am Abspielkopf teilen   S").clicked() {
+                if ui.button("Split at playhead   S").clicked() {
                     app.split_at_playhead();
                     ui.close_menu();
                 }
-                if ui.button("Clip löschen   Entf").clicked() {
+                if ui.button("Delete clip   Del").clicked() {
                     app.delete_selected_clip();
                     ui.close_menu();
                 }
-                if ui.button("Clip duplizieren   ⌘D").clicked() {
+                if ui.button("Duplicate clip   ⌘D").clicked() {
                     app.duplicate_selected_clip();
                     ui.close_menu();
                 }
             });
-            ui.menu_button("Text & Stille", |ui| {
-                if ui.button("🔇 Stille automatisch entfernen (alle Clips)").clicked() {
+            ui.menu_button("Text & Silence", |ui| {
+                if ui.button("🔇 Remove silence automatically (all clips)").clicked() {
                     app.remove_silence_all();
                     ui.close_menu();
                 }
-                if ui.button("↺ Alle Stille-Schnitte zurücksetzen").clicked() {
+                if ui.button("↺ Reset all silence cuts").clicked() {
                     let ids = app.project.clips.iter().map(|c| c.id).collect();
                     app.restore_silence(ids);
                     ui.close_menu();
                 }
-                if ui.button("🔄 Stille neu analysieren (neue Schwelle)").clicked() {
+                if ui.button("🔄 Re-analyze silence (new threshold)").clicked() {
                     let ids: Vec<Id> = app.project.media.iter().map(|m| m.id).collect();
                     for id in ids {
                         app.start_silence_detection(id);
@@ -98,12 +98,12 @@ pub fn menu_bar(app: &mut App, ctx: &egui::Context) {
                     ui.close_menu();
                 }
                 ui.separator();
-                if ui.button("🗑 Füllwörter entfernen").clicked() {
+                if ui.button("🗑 Remove filler words").clicked() {
                     app.remove_fillers_all();
                     ui.close_menu();
                 }
-                ui.menu_button("〰 Weiche Übergänge", |ui| super::transcript::transition_settings(app, ui));
-                if ui.button("📝 Alle Medien transkribieren").clicked() {
+                ui.menu_button("〰 Smooth transitions", |ui| super::transcript::transition_settings(app, ui));
+                if ui.button("📝 Transcribe all media").clicked() {
                     let ids: Vec<Id> =
                         app.project.media.iter().filter(|m| m.transcript.is_none() && m.has_audio).map(|m| m.id).collect();
                     for id in ids {
@@ -111,7 +111,7 @@ pub fn menu_bar(app: &mut App, ctx: &egui::Context) {
                     }
                     ui.close_menu();
                 }
-                if ui.button("↺ Alle Text-Schnitte zurücksetzen").clicked() {
+                if ui.button("↺ Reset all text cuts").clicked() {
                     app.checkpoint();
                     for c in &mut app.project.clips {
                         c.clear_cuts(Some(CutKind::Text));
@@ -120,38 +120,38 @@ pub fn menu_bar(app: &mut App, ctx: &egui::Context) {
                     ui.close_menu();
                 }
             });
-            ui.menu_button("Projekt", |ui| {
+            ui.menu_button("Project", |ui| {
                 if !app.project.is_audio() {
-                    if ui.button("Format & Bildrate …").clicked() {
+                    if ui.button("Format & frame rate …").clicked() {
                         app.show_project_settings = true;
                         ui.close_menu();
                     }
-                    if ui.button("+ Videospur").clicked() {
+                    if ui.button("+ Video track").clicked() {
                         app.checkpoint();
                         app.project.add_track(TrackKind::Video);
                         ui.close_menu();
                     }
                 }
-                if ui.button("+ Audiospur").clicked() {
+                if ui.button("+ Audio track").clicked() {
                     app.checkpoint();
                     app.project.add_track(TrackKind::Audio);
                     ui.close_menu();
                 }
                 ui.separator();
-                ui.menu_button("🎞 Clip-Übergänge", |ui| super::timeline::clip_transition_settings(app, ui));
-                if !app.project.is_audio() && ui.button("💬 Untertitel …").clicked() {
+                ui.menu_button("🎞 Clip transitions", |ui| super::timeline::clip_transition_settings(app, ui));
+                if !app.project.is_audio() && ui.button("💬 Subtitles …").clicked() {
                     app.show_subtitles = true;
                     ui.close_menu();
                 }
             });
-            ui.menu_button("Hilfe", |ui| {
-                if ui.button("Tastenkürzel & Anleitung").clicked() {
+            ui.menu_button("Help", |ui| {
+                if ui.button("Keyboard shortcuts & guide").clicked() {
                     app.show_help = true;
                     ui.close_menu();
                 }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let btn = egui::Button::new(RichText::new("⬆ Exportieren").strong()).fill(style::ACCENT_DIM);
+                let btn = egui::Button::new(RichText::new("⬆ Export").strong()).fill(style::ACCENT_DIM);
                 if ui.add(btn).clicked() {
                     app.export_ui.open = true;
                 }
@@ -166,12 +166,12 @@ pub fn status_bar(app: &mut App, ctx: &egui::Context) {
             let mut cancel: Option<Id> = None;
             for t in app.tasks.iter().take(4) {
                 ui.add(egui::ProgressBar::new(t.progress).desired_width(110.0).text(RichText::new(&t.label).small()));
-                if t.cancel.is_some() && ui.small_button("✖").on_hover_text("Abbrechen").clicked() {
+                if t.cancel.is_some() && ui.small_button("✖").on_hover_text("Cancel").clicked() {
                     cancel = Some(t.id);
                 }
             }
             if app.tasks.len() > 4 {
-                ui.label(format!("+{} weitere", app.tasks.len() - 4));
+                ui.label(format!("+{} more", app.tasks.len() - 4));
             }
             if let Some(id) = cancel {
                 if let Some(c) = app.tasks.iter().find(|t| t.id == id).and_then(|t| t.cancel.clone()) {
@@ -186,7 +186,7 @@ pub fn status_bar(app: &mut App, ctx: &egui::Context) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let p = &app.project;
                 let info = if p.is_audio() {
-                    format!("Audio-Projekt · {}", fmt_time(p.duration()))
+                    format!("Audio project · {}", fmt_time(p.duration()))
                 } else {
                     format!("{}×{} · {} fps · {}", p.width, p.height, p.fps, fmt_time(p.duration()))
                 };
@@ -207,9 +207,9 @@ pub fn left_panel(app: &mut App, ui: &mut egui::Ui) {
 
 fn media_bin(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        ui.heading("🎞 Medien");
+        ui.heading("🎞 Media");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("📂 Importieren").clicked() {
+            if ui.button("📂 Import").clicked() {
                 app.import_dialog(Placement::Main);
             }
         });
@@ -217,9 +217,9 @@ fn media_bin(app: &mut App, ui: &mut egui::Ui) {
     let audio_mode = app.project.is_audio();
     if app.project.media.is_empty() {
         let hint = if audio_mode {
-            "Dateien hierher ziehen oder importieren.\nAudio (und der Ton von Videos) landet auf der Hauptspur A1."
+            "Drag files here or import them.\nAudio (including the audio of videos) goes on main track A1."
         } else {
-            "Dateien hierher ziehen oder importieren.\nVideos landen auf der Hauptspur, Audio auf A1."
+            "Drag files here or import them.\nVideos go on the main track, audio on A1."
         };
         ui.label(RichText::new(hint).weak().small());
         return;
@@ -240,18 +240,18 @@ fn media_bin(app: &mut App, ui: &mut egui::Ui) {
             ui.label(RichText::new(info).small().weak());
             ui.horizontal_wrapped(|ui| {
                 let tr = if app.task_running(TaskKind::Transcribe(m.id)) {
-                    RichText::new("📝 läuft …").small().color(style::WARN)
+                    RichText::new("📝 running …").small().color(style::WARN)
                 } else if let Some(t) = &m.transcript {
-                    RichText::new(format!("📝 {} Wörter", t.words.len())).small().color(Color32::LIGHT_GREEN)
+                    RichText::new(format!("📝 {} words", t.words.len())).small().color(Color32::LIGHT_GREEN)
                 } else {
                     RichText::new("📝 –").small().weak()
                 };
                 ui.label(tr);
                 let si = if app.task_running(TaskKind::Silence(m.id)) {
-                    RichText::new("🔇 läuft …").small().color(style::WARN)
+                    RichText::new("🔇 running …").small().color(style::WARN)
                 } else if let Some(s) = &m.silences {
                     let total: f64 = s.iter().map(|r| r.len()).sum();
-                    RichText::new(format!("🔇 {} Pausen ({total:.0} s)", s.len())).small().color(Color32::LIGHT_GREEN)
+                    RichText::new(format!("🔇 {} pauses ({total:.0} s)", s.len())).small().color(Color32::LIGHT_GREEN)
                 } else {
                     RichText::new("🔇 –").small().weak()
                 };
@@ -259,31 +259,31 @@ fn media_bin(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.horizontal_wrapped(|ui| {
                 if audio_mode {
-                    if m.has_audio && ui.small_button("➕ Hauptspur").on_hover_text("Hinten an A1 anhängen").clicked() {
+                    if m.has_audio && ui.small_button("➕ Main track").on_hover_text("Append to the end of A1").clicked() {
                         action = Some((m.id, "main"));
                     }
                     if m.has_audio
-                        && ui.small_button("🎵 Zweite Spur").on_hover_text("Auf A2 am Abspielkopf – z.B. Musik oder Atmo").clicked()
+                        && ui.small_button("🎵 Second track").on_hover_text("On A2 at the playhead - e.g. music or ambience").clicked()
                     {
                         action = Some((m.id, "audio"));
                     }
                 } else {
                     if m.kind == MediaKind::Video {
-                        if ui.small_button("➕ Hauptspur").clicked() {
+                        if ui.small_button("➕ Main track").clicked() {
                             action = Some((m.id, "main"));
                         }
-                        if ui.small_button("🖼 Bild-in-Bild").on_hover_text("Auf V2 am Abspielkopf").clicked() {
+                        if ui.small_button("🖼 Picture-in-picture").on_hover_text("On V2 at the playhead").clicked() {
                             action = Some((m.id, "pip"));
                         }
                     }
-                    if m.has_audio && ui.small_button("🎵 Audiospur").on_hover_text("Nur den Ton auf A1 am Abspielkopf").clicked() {
+                    if m.has_audio && ui.small_button("🎵 Audio track").on_hover_text("Audio only, on A1 at the playhead").clicked() {
                         action = Some((m.id, "audio"));
                     }
                 }
-                if m.has_audio && ui.small_button("📝").on_hover_text("(Neu) transkribieren").clicked() {
+                if m.has_audio && ui.small_button("📝").on_hover_text("Transcribe (again)").clicked() {
                     action = Some((m.id, "transcribe"));
                 }
-                if ui.small_button("🗑").on_hover_text("Aus Projekt entfernen").clicked() {
+                if ui.small_button("🗑").on_hover_text("Remove from project").clicked() {
                     action = Some((m.id, "remove"));
                 }
             });
@@ -302,9 +302,9 @@ fn media_bin(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn inspector(app: &mut App, ui: &mut egui::Ui) {
-    ui.heading("🔧 Inspektor");
+    ui.heading("🔧 Inspector");
     let Some(id) = app.selected_clip else {
-        ui.label(RichText::new("Clip in der Timeline auswählen.").weak());
+        ui.label(RichText::new("Select a clip in the timeline.").weak());
         return;
     };
     let Some(before) = app.project.clip(id).cloned() else { return };
@@ -324,13 +324,13 @@ fn inspector(app: &mut App, ui: &mut egui::Ui) {
         ui.label("Timeline");
         ui.label(format!("{} – {}", fmt_time(clip.start), fmt_time(clip.end(fps))));
         ui.end_row();
-        ui.label("Länge");
-        ui.label(format!("{} (Quelle {})", fmt_time(clip.duration(fps)), fmt_time(clip.src_out - clip.src_in)));
+        ui.label("Duration");
+        ui.label(format!("{} (source {})", fmt_time(clip.duration(fps)), fmt_time(clip.src_out - clip.src_in)));
         ui.end_row();
-        ui.label("In-Punkt");
+        ui.label("In point");
         ui.add(egui::DragValue::new(&mut clip.src_in).range(0.0..=clip.src_out - 0.1).speed(0.04).suffix(" s").max_decimals(2));
         ui.end_row();
-        ui.label("Out-Punkt");
+        ui.label("Out point");
         ui.add(egui::DragValue::new(&mut clip.src_out).range(clip.src_in + 0.1..=src_dur).speed(0.04).suffix(" s").max_decimals(2));
         ui.end_row();
         if clip.track != main {
@@ -343,13 +343,13 @@ fn inspector(app: &mut App, ui: &mut egui::Ui) {
     let text_cuts = clip.cuts.iter().filter(|c| c.kind == CutKind::Text).count();
     let silence_cuts = clip.cuts.iter().filter(|c| c.kind == CutKind::Silence).count();
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(format!("✂ {text_cuts} Text · 🔇 {silence_cuts} Stille · −{:.1} s", clip.removed_time(fps))).color(style::CUT));
+        ui.label(RichText::new(format!("✂ {text_cuts} text · 🔇 {silence_cuts} silence · −{:.1} s", clip.removed_time(fps))).color(style::CUT));
     });
     ui.horizontal_wrapped(|ui| {
-        if ui.small_button("🔇 Stille entfernen").clicked() {
+        if ui.small_button("🔇 Remove silence").clicked() {
             remove_silence = true;
         }
-        if ui.small_button("↺ Schnitte zurücksetzen").clicked() {
+        if ui.small_button("↺ Reset cuts").clicked() {
             clip.clear_cuts(None);
         }
     });
@@ -358,32 +358,32 @@ fn inspector(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(6.0);
         ui.label(RichText::new("🔊 Audio").strong());
         let mut vol_pct = clip.volume * 100.0;
-        ui.add(egui::Slider::new(&mut vol_pct, 0.0..=200.0).suffix(" %").text("Lautstärke"));
+        ui.add(egui::Slider::new(&mut vol_pct, 0.0..=200.0).suffix(" %").text("Volume"));
         clip.volume = vol_pct / 100.0;
-        ui.checkbox(&mut clip.muted, "Stumm");
+        ui.checkbox(&mut clip.muted, "Mute");
     }
     ui.add_space(6.0);
-    ui.label(RichText::new("🌓 Blenden").strong());
+    ui.label(RichText::new("🌓 Fades").strong());
     let edges = app.project.clip_edges(&before);
     if edges.start.is_some() || edges.end.is_some() {
         let side = match (edges.start.is_some(), edges.end.is_some()) {
-            (true, true) => "Anfang und Ende",
-            (true, false) => "Anfang",
-            _ => "Ende",
+            (true, true) => "start and end",
+            (true, false) => "start",
+            _ => "end",
         };
-        ui.label(RichText::new(format!("🎞 Clip-Übergang am {side} ersetzt dort die Blende")).small().weak());
+        ui.label(RichText::new(format!("🎞 Clip transition at {side} replaces the fade there")).small().weak());
     }
-    ui.add(egui::Slider::new(&mut clip.fade_in, 0.0..=3.0).suffix(" s").text("Einblenden"));
-    ui.add(egui::Slider::new(&mut clip.fade_out, 0.0..=3.0).suffix(" s").text("Ausblenden"));
+    ui.add(egui::Slider::new(&mut clip.fade_in, 0.0..=3.0).suffix(" s").text("Fade in"));
+    ui.add(egui::Slider::new(&mut clip.fade_out, 0.0..=3.0).suffix(" s").text("Fade out"));
 
     if is_video {
         ui.add_space(6.0);
-        ui.label(RichText::new("🖼 Bild / Bild-in-Bild").strong());
+        ui.label(RichText::new("🖼 Picture / Picture-in-picture").strong());
         let t = &mut clip.transform;
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut t.fit, FitMode::Fit, "Einpassen");
-            ui.selectable_value(&mut t.fit, FitMode::Fill, "Füllen");
-            ui.selectable_value(&mut t.fit, FitMode::Custom, "Bild-in-Bild");
+            ui.selectable_value(&mut t.fit, FitMode::Fit, "Fit");
+            ui.selectable_value(&mut t.fit, FitMode::Fill, "Fill");
+            ui.selectable_value(&mut t.fit, FitMode::Custom, "Picture-in-picture");
         });
         if t.fit == FitMode::Custom {
             ui.horizontal(|ui| {
@@ -401,24 +401,24 @@ fn inspector(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
             let mut scale_pct = t.scale * 100.0;
-            ui.add(egui::Slider::new(&mut scale_pct, 5.0..=100.0).suffix(" %").text("Größe"));
+            ui.add(egui::Slider::new(&mut scale_pct, 5.0..=100.0).suffix(" %").text("Size"));
             t.scale = scale_pct / 100.0;
             ui.add(egui::Slider::new(&mut t.x, -0.5..=1.0).text("X"));
             ui.add(egui::Slider::new(&mut t.y, -0.5..=1.0).text("Y"));
-            ui.add(egui::Slider::new(&mut t.border, 0.0..=30.0).text("Rahmen (px)"));
+            ui.add(egui::Slider::new(&mut t.border, 0.0..=30.0).text("Border (px)"));
             if t.border > 0.0 {
                 ui.horizontal(|ui| {
-                    ui.label("Rahmenfarbe");
+                    ui.label("Border color");
                     ui.color_edit_button_srgb(&mut t.border_color);
                 });
             }
         }
         let mut op = t.opacity * 100.0;
-        ui.add(egui::Slider::new(&mut op, 0.0..=100.0).suffix(" %").text("Deckkraft"));
+        ui.add(egui::Slider::new(&mut op, 0.0..=100.0).suffix(" %").text("Opacity"));
         t.opacity = op / 100.0;
     }
 
-    // Änderungen übernehmen – eine Undo-Stufe pro Geste.
+    // Apply changes - one undo step per gesture.
     let changed = serde_json::to_string(&clip).ok() != serde_json::to_string(&before).ok();
     if changed || pip_preset.is_some() {
         if !app.inspector_editing {
@@ -453,7 +453,7 @@ pub fn preview_panel(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
     ui.horizontal(|ui| {
-        ui.heading("▶ Vorschau");
+        ui.heading("▶ Preview");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(RichText::new(fmt_time(app.playhead)).monospace().size(15.0));
         });
@@ -470,12 +470,12 @@ pub fn preview_panel(app: &mut App, ui: &mut egui::Ui) {
     if let Some(tex) = &app.preview_tex {
         ui.painter().image(tex.id(), img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
     } else if app.project.clips.is_empty() {
-        ui.painter().text(img_rect.center(), egui::Align2::CENTER_CENTER, "Keine Clips", egui::FontId::proportional(16.0), Color32::GRAY);
+        ui.painter().text(img_rect.center(), egui::Align2::CENTER_CENTER, "No clips", egui::FontId::proportional(16.0), Color32::GRAY);
     }
     if let Some(e) = &app.preview_error {
         ui.painter().text(img_rect.left_bottom() + Vec2::new(6.0, -6.0), egui::Align2::LEFT_BOTTOM, e, egui::FontId::proportional(11.0), style::CUT);
     }
-    // Rahmen des ausgewählten Bild-in-Bild-Clips einzeichnen
+    // Draw the frame of the selected picture-in-picture clip
     if let Some(c) = app.selected_clip.and_then(|id| app.project.clip(id)) {
         if c.transform.fit == FitMode::Custom && app.playhead >= c.start && app.playhead < c.end(app.project.fps) {
             let aspect_src = app.project.media(c.source).map(|m| m.aspect()).unwrap_or(16.0 / 9.0) as f32;
@@ -499,7 +499,7 @@ pub fn preview_panel(app: &mut App, ui: &mut egui::Ui) {
         if ui.button("◀ 1 s").clicked() {
             app.seek(app.playhead - 1.0);
         }
-        let play = if app.is_playing() { "⏸ Pause" } else { "▶ Abspielen" };
+        let play = if app.is_playing() { "⏸ Pause" } else { "▶ Play" };
         if ui.add(egui::Button::new(RichText::new(play).strong()).min_size(Vec2::new(100.0, 0.0))).clicked() {
             app.toggle_play();
         }
@@ -515,23 +515,23 @@ pub fn preview_panel(app: &mut App, ui: &mut egui::Ui) {
                         ui.selectable_value(&mut app.settings.preview_height, h, format!("{h}p"));
                     }
                 });
-            ui.label(RichText::new("Qualität").small());
+            ui.label(RichText::new("Quality").small());
         });
     });
 }
 
-/// Audio-Modus: Player mit großer Zeitanzeige und dem gerade gesprochenen Satz.
+/// Audio mode: player with a large time display and the sentence currently being spoken.
 fn audio_player(app: &mut App, ui: &mut egui::Ui) {
     ui.heading("🎧 Player");
     ui.add_space(10.0);
     let duration = app.project.duration();
     ui.vertical_centered(|ui| {
         ui.label(RichText::new(fmt_time(app.playhead)).monospace().size(40.0).strong());
-        ui.label(RichText::new(format!("von {}", fmt_time(duration))).monospace().weak());
+        ui.label(RichText::new(format!("of {}", fmt_time(duration))).monospace().weak());
     });
     ui.add_space(8.0);
 
-    // Fortschrittsbalken zum Springen
+    // Progress bar for seeking
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 14.0), Sense::click_and_drag());
     ui.painter().rect_filled(rect, 4.0, Color32::from_gray(50));
     if duration > 0.0 {
@@ -550,7 +550,7 @@ fn audio_player(app: &mut App, ui: &mut egui::Ui) {
         if ui.button("◀ 5 s").clicked() {
             app.seek(app.playhead - 5.0);
         }
-        let play = if app.is_playing() { "⏸ Pause" } else { "▶ Abspielen" };
+        let play = if app.is_playing() { "⏸ Pause" } else { "▶ Play" };
         if ui.add(egui::Button::new(RichText::new(play).strong().size(16.0)).min_size(Vec2::new(120.0, 30.0))).clicked() {
             app.toggle_play();
         }
@@ -559,10 +559,10 @@ fn audio_player(app: &mut App, ui: &mut egui::Ui) {
         }
     });
 
-    // Aktueller Satz: Wörter um den Abspielkopf, das gesprochene hervorgehoben.
+    // Current sentence: words around the playhead, the spoken one highlighted.
     ui.add_space(16.0);
     ui.separator();
-    ui.label(RichText::new("Gerade gesprochen").small().weak());
+    ui.label(RichText::new("Now speaking").small().weak());
     let fps = app.project.fps;
     let main = app.project.main_track();
     let clip = app.project.clips_on(main).into_iter().find(|c| app.playhead >= c.start && app.playhead < c.end(fps)).cloned();
@@ -578,7 +578,7 @@ fn audio_player(app: &mut App, ui: &mut egui::Ui) {
         .filter(|t| t.kind == crate::project::TokenKind::Word && !clip.is_token_deleted(t, fps))
         .collect();
     if words.is_empty() {
-        ui.label(RichText::new("Kein Transkript").weak());
+        ui.label(RichText::new("No transcript").weak());
         return;
     }
     let cur = words.iter().rposition(|w| w.range.start <= src).unwrap_or(0);

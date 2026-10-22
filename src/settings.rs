@@ -1,4 +1,4 @@
-//! Persistente App-Einstellungen (`~/.textcutforge/settings.json`).
+//! Persistent app settings (`~/.textcutforge/settings.json`).
 
 use crate::media::Tools;
 use crate::transcribe::{WhisperConfig, model_path};
@@ -12,13 +12,13 @@ pub struct Settings {
     pub ffmpeg: String,
     pub ffprobe: String,
     pub whisper: String,
-    /// Modellname (tiny/base/small/…) – oder eigener Pfad in `model_path`.
+    /// Model name (tiny/base/small/…) – or a custom path in `model_path`.
     pub model: String,
     pub model_path: String,
     pub language: String,
     pub threads: usize,
     pub auto_transcribe: bool,
-    /// Füllwörter („äh“, „ähm“), Wiederholungen und Versprecher mit transkribieren.
+    /// Also transcribe filler words ("äh", "ähm"), repetitions and slips of the tongue.
     pub verbatim: bool,
     pub auto_detect_silence: bool,
     pub silence_db: f32,
@@ -95,13 +95,13 @@ impl Settings {
         }
     }
 
-    /// Ist die Transkription einsatzbereit? Sonst Begründung.
+    /// Is transcription ready to use? Otherwise returns the reason.
     pub fn whisper_ready(&self) -> Result<(), String> {
         if self.whisper_binary().is_none() {
-            return Err("whisper-cli nicht gefunden (brew install whisper-cpp)".into());
+            return Err("whisper-cli not found (brew install whisper-cpp)".into());
         }
         if !self.model_file().is_file() {
-            return Err(format!("Modell „{}“ fehlt – in den Einstellungen herunterladen", self.model));
+            return Err(format!("Model \"{}\" is missing – download it in Settings", self.model));
         }
         Ok(())
     }

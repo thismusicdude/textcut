@@ -1,4 +1,4 @@
-//! Zentraler App-Zustand: Projekt, Undo/Redo, Hintergrundjobs, Wiedergabe.
+//! Central app state: project, undo/redo, background jobs, playback.
 
 use crate::export::{self, ExportJob};
 use crate::media::{self, Tools};
@@ -58,7 +58,7 @@ pub struct Task {
     pub cancel: Option<Arc<AtomicBool>>,
 }
 
-/// Wird an Hintergrundjobs übergeben, um Fortschritt/Ergebnisse zu melden.
+/// Passed to background jobs to report progress/results.
 #[derive(Clone)]
 pub struct Reporter {
     tx: Sender<JobMsg>,
@@ -121,7 +121,7 @@ pub struct App {
     next_task: u64,
     heavy_queue: Sender<SerialJob>,
     export_queue: Sender<SerialJob>,
-    /// Clips, deren Stille entfernt werden soll, sobald die Analyse fertig ist.
+    /// Clips whose silence should be removed as soon as the analysis is finished.
     pending_silence: Vec<Id>,
 
     pub playhead: f64,
@@ -145,7 +145,7 @@ pub struct App {
     pub show_project_settings: bool,
     pub show_help: bool,
     pub show_subtitles: bool,
-    /// Startauswahl Video-/Audio-Projekt.
+    /// Start screen: choose video or audio project.
     pub show_start: bool,
     pub confirm_close: bool,
     allow_close: bool,
@@ -203,14 +203,14 @@ impl App {
             status_at: Instant::now(),
             log: Vec::new(),
         };
-        if media::probe(&tools, Path::new("/nonexistent"), 0).err().is_some_and(|e| e.to_string().contains("gestartet")) {
-            app.set_status("⚠ ffmpeg/ffprobe nicht gefunden – bitte installieren (brew install ffmpeg) oder Pfad in den Einstellungen setzen.");
+        if media::probe(&tools, Path::new("/nonexistent"), 0).err().is_some_and(|e| e.to_string().contains("Could not start")) {
+            app.set_status("⚠ ffmpeg/ffprobe not found – please install it (brew install ffmpeg) or set the path in Settings.");
         }
         if let Some(path) = open {
             if path.extension().is_some_and(|e| e == "tcf") {
                 app.open_project(&path);
             } else {
-                // Reine Audiodatei → Audio-Projekt, sonst Video-Projekt.
+                // Pure audio file → audio project, otherwise video project.
                 let audio = path
                     .extension()
                     .and_then(|e| e.to_str())
@@ -240,7 +240,7 @@ impl App {
     // Undo / Redo
     // -----------------------------------------------------------------------
 
-    /// Vor jeder Änderung aufrufen: speichert den aktuellen Stand.
+    /// Call before every change: saves the current state.
     pub fn checkpoint(&mut self) {
         self.push_undo(self.project.clone());
     }
@@ -254,7 +254,7 @@ impl App {
         self.touch();
     }
 
-    /// Verwirft den letzten Checkpoint (z.B. wenn ein Drag nichts geändert hat).
+    /// Discards the last checkpoint (e.g. when a drag changed nothing).
     pub fn drop_checkpoint(&mut self) {
         self.undo.pop();
     }
@@ -265,7 +265,7 @@ impl App {
     }
 
     fn restore(&mut self, mut state: Project) -> Project {
-        // Medien (Transkripte, Analysen) bleiben immer auf dem neuesten Stand.
+        // Media (transcripts, analyses) always stay up to date.
         state.media = self.project.media.clone();
         state.next_id = state.next_id.max(self.project.next_id);
         let old = std::mem::replace(&mut self.project, state);
@@ -281,7 +281,7 @@ impl App {
         if let Some(prev) = self.undo.pop() {
             let cur = self.restore(prev);
             self.redo.push(cur);
-            self.set_status("Rückgängig");
+            self.set_status("Undo");
         }
     }
 
@@ -289,7 +289,7 @@ impl App {
         if let Some(next) = self.redo.pop() {
             let cur = self.restore(next);
             self.undo.push(cur);
-            self.set_status("Wiederholen");
+            self.set_status("Redo");
         }
     }
 
@@ -302,7 +302,7 @@ impl App {
     }
 
     // -----------------------------------------------------------------------
-    // Hintergrundjobs
+    // Background jobs
     // -----------------------------------------------------------------------
 
     fn spawn_task(
@@ -340,13 +340,13 @@ impl App {
 
     pub fn import_dialog(&mut self, placement: Placement) {
         let all: Vec<&str> = AUDIO_EXTENSIONS.iter().chain(VIDEO_EXTENSIONS).copied().collect();
-        let mut dialog = rfd::FileDialog::new().set_title("Medien importieren");
+        let mut dialog = rfd::FileDialog::new().set_title("Import media");
         dialog = if self.project.is_audio() {
-            dialog.add_filter("Audio", AUDIO_EXTENSIONS).add_filter("Video (nur Ton)", VIDEO_EXTENSIONS)
+            dialog.add_filter("Audio", AUDIO_EXTENSIONS).add_filter("Video (audio only)", VIDEO_EXTENSIONS)
         } else {
             dialog.add_filter("Video & Audio", &all)
         };
-        let files = dialog.add_filter("Alle Dateien", &["*"]).pick_files();
+        let files = dialog.add_filter("All files", &["*"]).pick_files();
         if let Some(files) = files {
             self.import_files(files, placement);
         }
@@ -362,7 +362,7 @@ impl App {
             let id = self.project.alloc_id();
             let name = crate::util::file_stem(&path);
             let tools = tools.clone();
-            self.spawn_task(format!("Analysiere {name}"), TaskKind::Import, None, false, move |rep, _| {
+            self.spawn_task(format!("Analyzing {name}"), TaskKind::Import, None, false, move |rep, _| {
                 let result = media::probe(&tools, &path, id).map_err(|e| e.to_string());
                 rep.send(JobMsg::Probed { path, result, placement });
             });
@@ -379,12 +379,12 @@ impl App {
         };
         let id = media.id;
         let kind = media.kind;
-        self.set_status(format!("Importiert: {}", media.name));
+        self.set_status(format!("Imported: {}", media.name));
         self.project.media.push(media);
         self.touch();
 
         let placement = match (self.project.mode, placement, kind) {
-            // Im Audio-Modus landet alles (auch Videodateien) als Ton auf der Hauptspur.
+            // In audio mode everything (including video files) goes onto the main track as audio.
             (ProjectMode::Audio, Placement::Overlay, _) => Placement::Audio,
             (ProjectMode::Audio, p, _) => p,
             (ProjectMode::Video, Placement::Main | Placement::Overlay, MediaKind::Audio) => Placement::Audio,
@@ -410,7 +410,7 @@ impl App {
                 Some(t) => t.id,
                 None => self.project.add_track(TrackKind::Video),
             },
-            // Video-Modus: A1. Audio-Modus: A1 ist die Hauptspur → zweite Spur (Musik, Atmo).
+            // Video mode: A1. Audio mode: A1 is the main track → second track (music, ambience).
             Placement::Audio => {
                 let index = if self.project.is_audio() { 1 } else { 0 };
                 match self.project.audio_tracks().get(index) {
@@ -428,13 +428,13 @@ impl App {
             }
             None => {
                 self.drop_checkpoint();
-                self.set_status("Dieser Clip passt nicht auf diese Spur.");
+                self.set_status("This clip does not fit on this track.");
             }
         }
     }
 
-    /// Wortpegel messen (für „unsicher“-Markierung), sobald Transkript und
-    /// Wellenform vorliegen. Liefert die Zahl unsicherer Wörter.
+    /// Measures word levels (for the "uncertain" marking) once transcript and
+    /// waveform are available. Returns the number of uncertain words.
     fn measure_levels(&mut self, media: Id) -> usize {
         let Some(m) = self.project.media_mut(media) else { return 0 };
         let (Some(peaks), Some(t)) = (m.waveform.clone(), m.transcript.as_mut()) else { return 0 };
@@ -449,7 +449,7 @@ impl App {
         }
         let path = m.path.clone();
         let tools = self.tools();
-        self.spawn_task(format!("Wellenform {}", m.name), TaskKind::Waveform, None, false, move |rep, _| {
+        self.spawn_task(format!("Waveform {}", m.name), TaskKind::Waveform, None, false, move |rep, _| {
             if let Ok(peaks) = media::waveform(&tools, &path) {
                 rep.send(JobMsg::Waveform { media, peaks });
             }
@@ -467,7 +467,7 @@ impl App {
         let (path, duration) = (m.path.clone(), m.duration);
         let tools = self.tools();
         let (db, min) = (self.settings.silence_db, self.settings.silence_min);
-        self.spawn_task(format!("Stille-Analyse {}", m.name), TaskKind::Silence(media), None, false, move |rep, _| {
+        self.spawn_task(format!("Silence analysis {}", m.name), TaskKind::Silence(media), None, false, move |rep, _| {
             let result = media::detect_silence(&tools, &path, db, min, duration).map_err(|e| e.to_string());
             rep.send(JobMsg::Silences { media, result });
         });
@@ -478,20 +478,20 @@ impl App {
             return;
         }
         if let Err(e) = self.settings.whisper_ready() {
-            self.set_status(format!("Transkription nicht möglich: {e}"));
+            self.set_status(format!("Transcription not possible: {e}"));
             self.show_settings = true;
             return;
         }
         let Some(m) = self.project.media(media) else { return };
         if !m.has_audio {
-            self.set_status("Diese Datei hat keine Tonspur.");
+            self.set_status("This file has no audio track.");
             return;
         }
         let path = m.path.clone();
         let tools = self.tools();
         let cfg = self.settings.whisper_config();
         let queue = self.heavy_queue.clone();
-        self.spawn_task(format!("Transkribiere {}", m.name), TaskKind::Transcribe(media), Some(queue), false, move |rep, _| {
+        self.spawn_task(format!("Transcribing {}", m.name), TaskKind::Transcribe(media), Some(queue), false, move |rep, _| {
             let result = transcribe::transcribe(&tools, &cfg, &path, &|p| rep.progress(p)).map_err(|e| format!("{e:#}"));
             rep.send(JobMsg::Transcript { media, result });
         });
@@ -502,7 +502,7 @@ impl App {
             return;
         }
         let name = self.settings.model.clone();
-        self.spawn_task(format!("Lade Whisper-Modell „{name}“"), TaskKind::Download, None, false, move |rep, _| {
+        self.spawn_task(format!("Downloading Whisper model \"{name}\""), TaskKind::Download, None, false, move |rep, _| {
             let result = transcribe::download_model(&name, &|p| rep.progress(p)).map_err(|e| e.to_string());
             rep.send(JobMsg::ModelDownloaded(result));
         });
@@ -549,7 +549,7 @@ impl App {
                         }
                         self.measure_levels(media);
                         self.touch();
-                        // Clips, die auf das Ergebnis warten oder bereits Stille-Schnitte haben, aktualisieren.
+                        // Update clips that are waiting for the result or already have silence cuts.
                         let clips: Vec<Id> = self
                             .project
                             .clips
@@ -564,13 +564,13 @@ impl App {
                         if !clips.is_empty() {
                             self.checkpoint();
                             let removed = self.apply_silence(&clips);
-                            self.set_status(format!("{n} Pausen erkannt – {removed} entfernt."));
+                            self.set_status(format!("{n} pauses detected – {removed} removed."));
                         } else {
-                            self.set_status(format!("Stille-Analyse fertig: {n} Pausen erkannt."));
+                            self.set_status(format!("Silence analysis finished: {n} pauses detected."));
                         }
                         self.pending_silence.retain(|c| !clips.contains(c));
                     }
-                    Err(e) => self.set_status(format!("❌ Stille-Analyse: {e}")),
+                    Err(e) => self.set_status(format!("❌ Silence analysis: {e}")),
                 },
                 JobMsg::Transcript { media, result } => match result {
                     Ok(t) => {
@@ -580,19 +580,19 @@ impl App {
                         }
                         let unsure = self.measure_levels(media);
                         self.touch();
-                        let extra = if unsure > 0 { format!(" ({unsure} unsicher, gelb markiert)") } else { String::new() };
-                        self.set_status(format!("Transkription fertig: {n} Wörter{extra}."));
+                        let extra = if unsure > 0 { format!(" ({unsure} uncertain, highlighted in yellow)") } else { String::new() };
+                        self.set_status(format!("Transcription finished: {n} words{extra}."));
                     }
-                    Err(e) => self.set_status(format!("❌ Transkription: {e}")),
+                    Err(e) => self.set_status(format!("❌ Transcription: {e}")),
                 },
                 JobMsg::ModelDownloaded(r) => match r {
-                    Ok(p) => self.set_status(format!("Modell gespeichert: {}", p.display())),
-                    Err(e) => self.set_status(format!("❌ Modell-Download: {e}")),
+                    Ok(p) => self.set_status(format!("Model saved: {}", p.display())),
+                    Err(e) => self.set_status(format!("❌ Model download: {e}")),
                 },
                 JobMsg::Exported { label, result } => match result {
                     Ok(p) => {
                         self.export_ui.finished.push((label, p.clone()));
-                        self.set_status(format!("✅ Exportiert: {}", p.display()));
+                        self.set_status(format!("✅ Exported: {}", p.display()));
                     }
                     Err(e) => self.set_status(format!("❌ Export {label}: {e}")),
                 },
@@ -601,7 +601,7 @@ impl App {
     }
 
     // -----------------------------------------------------------------------
-    // Schnittaktionen
+    // Editing actions
     // -----------------------------------------------------------------------
 
     fn apply_silence(&mut self, clips: &[Id]) -> usize {
@@ -609,7 +609,7 @@ impl App {
         clips.iter().map(|&c| self.project.apply_silence_removal(c, pad, min)).sum()
     }
 
-    /// Entfernt Stille aus den angegebenen Clips (startet ggf. erst die Analyse).
+    /// Removes silence from the given clips (starts the analysis first if needed).
     pub fn remove_silence(&mut self, clips: Vec<Id>) {
         let mut ready = Vec::new();
         for c in clips {
@@ -631,9 +631,9 @@ impl App {
             let before = self.project.duration();
             let n = self.apply_silence(&ready);
             let saved = before - self.project.duration();
-            self.set_status(format!("🔇 {n} Pausen entfernt – {saved:.1} s kürzer."));
+            self.set_status(format!("🔇 {n} pauses removed – {saved:.1} s shorter."));
         } else if !self.pending_silence.is_empty() {
-            self.set_status("Stille wird analysiert – wird danach automatisch entfernt …");
+            self.set_status("Analyzing silence – it will be removed automatically afterwards …");
         }
     }
 
@@ -665,15 +665,15 @@ impl App {
         if n == 0 {
             self.drop_checkpoint();
         }
-        let hint = if unsure > 0 { format!(" {unsure} unsichere (gelb unterstrichen) stehen gelassen – bitte selbst prüfen.") } else { String::new() };
+        let hint = if unsure > 0 { format!(" {unsure} uncertain ones (underlined in yellow) were kept – please check them yourself.") } else { String::new() };
         let none = if n == 0 && unsure == 0 && self.settings.verbatim {
-            " Tipp: Bei älteren Transkripten fehlen Füllwörter – Medien neu transkribieren (📝)."
+            " Tip: older transcripts lack filler words – re-transcribe the media (📝)."
         } else if n == 0 && unsure == 0 {
-            " Tipp: „Füllwörter mit transkribieren“ in den Einstellungen aktivieren und neu transkribieren."
+            " Tip: enable \"Transcribe filler words too (verbatim)\" in Settings and re-transcribe."
         } else {
             ""
         };
-        self.set_status(format!("{n} Füllwörter entfernt.{hint}{none}"));
+        self.set_status(format!("{n} filler words removed.{hint}{none}"));
     }
 
     pub fn delete_phrase_all(&mut self, phrase: &str) {
@@ -683,11 +683,11 @@ impl App {
         if n == 0 {
             self.drop_checkpoint();
         }
-        self.set_status(format!("„{phrase}“: {n} Vorkommen gelöscht."));
+        self.set_status(format!("\"{phrase}\": {n} occurrences deleted."));
     }
 
-    /// Löscht die markierten Wörter – oder stellt sie wieder her, wenn sie
-    /// bereits alle gelöscht sind.
+    /// Deletes the selected words – or restores them if they
+    /// are already all deleted.
     pub fn toggle_selected_words(&mut self) {
         let Some(sel) = &self.sel else { return };
         let (clip_id, (a, b)) = (sel.clip, sel.range());
@@ -704,7 +704,7 @@ impl App {
     pub fn set_words_deleted(&mut self, clip: Id, a: usize, b: usize, deleted: bool) {
         self.checkpoint();
         self.project.set_tokens_deleted(clip, a, b, deleted);
-        self.set_status(if deleted { "✂ Text geschnitten" } else { "↺ Text wiederhergestellt" });
+        self.set_status(if deleted { "✂ Text cut" } else { "↺ Text restored" });
         if deleted {
             self.sel = None;
         }
@@ -718,7 +718,7 @@ impl App {
             _ => self.project.clips.iter().filter(|c| t > c.start && t < c.end(fps)).map(|c| c.id).collect(),
         };
         if targets.is_empty() {
-            self.set_status("Kein Clip unter dem Abspielkopf.");
+            self.set_status("No clip under the playhead.");
             return;
         }
         self.checkpoint();
@@ -732,7 +732,7 @@ impl App {
         if n == 0 {
             self.drop_checkpoint();
         } else {
-            self.set_status(format!("✂ {n} Clip(s) geteilt."));
+            self.set_status(format!("✂ {n} clip(s) split."));
         }
     }
 
@@ -741,7 +741,7 @@ impl App {
             self.checkpoint();
             self.project.delete_clip(id);
             self.sel = None;
-            self.set_status("Clip gelöscht.");
+            self.set_status("Clip deleted.");
         }
     }
 
@@ -761,7 +761,7 @@ impl App {
     }
 
     // -----------------------------------------------------------------------
-    // Wiedergabe
+    // Playback
     // -----------------------------------------------------------------------
 
     pub fn preview_size(&self) -> (u32, u32) {
@@ -793,11 +793,11 @@ impl App {
                 Ok(o) => self.audio_out = Some(o),
                 Err(e) => {
                     self.audio_failed = true;
-                    self.set_status(format!("⚠ Kein Audiogerät: {e}"));
+                    self.set_status(format!("⚠ No audio device: {e}"));
                 }
             }
         }
-        // Mit Untertiteln kürzere Fenster, damit die Bilder schnell bereitstehen.
+        // Shorter windows with subtitles so that frames are ready quickly.
         let window = if self.project.subtitles.burn_in { 60.0 } else { 300.0 };
         let to = (self.playhead + window).min(dur);
         let handle = self.audio_out.as_ref().map(|(_, h)| h);
@@ -808,7 +808,7 @@ impl App {
                 self.playback = Some(pb);
                 self.playback_rev = self.revision;
             }
-            Err(e) => self.set_status(format!("❌ Wiedergabe: {e}")),
+            Err(e) => self.set_status(format!("❌ Playback: {e}")),
         }
     }
 
@@ -829,7 +829,7 @@ impl App {
     }
 
     fn update_preview(&mut self, ctx: &egui::Context) {
-        // Änderungen während der Wiedergabe → ab aktueller Position neu starten.
+        // Changes during playback → restart from the current position.
         if self.is_playing() && self.playback_rev != self.revision {
             self.stop_playback();
             self.start_playback();
@@ -848,7 +848,7 @@ impl App {
                     self.playhead = to;
                     self.start_playback();
                 } else if let Some(e) = err.filter(|_| self.preview_tex.is_none()) {
-                    self.set_status(format!("❌ Wiedergabe: {e}"));
+                    self.set_status(format!("❌ Playback: {e}"));
                 }
             }
             ctx.request_repaint();
@@ -888,7 +888,7 @@ impl App {
     }
 
     // -----------------------------------------------------------------------
-    // Projektdateien
+    // Project files
     // -----------------------------------------------------------------------
 
     pub fn new_project(&mut self, mode: ProjectMode) {
@@ -907,7 +907,7 @@ impl App {
     }
 
     pub fn open_dialog(&mut self) {
-        if let Some(p) = rfd::FileDialog::new().add_filter("TextCutForge-Projekt", &["tcf"]).pick_file() {
+        if let Some(p) = rfd::FileDialog::new().add_filter("TextCutForge project", &["tcf"]).pick_file() {
             self.open_project(&p);
         }
     }
@@ -930,13 +930,13 @@ impl App {
                     self.start_waveform(id);
                 }
                 if missing.is_empty() {
-                    self.set_status(format!("Projekt geöffnet: {}", path.display()));
+                    self.set_status(format!("Project opened: {}", path.display()));
                 } else {
-                    self.set_status(format!("⚠ Fehlende Dateien: {}", missing.join(", ")));
+                    self.set_status(format!("⚠ Missing files: {}", missing.join(", ")));
                 }
                 self.dirty = false;
             }
-            Err(e) => self.set_status(format!("❌ Projekt konnte nicht geöffnet werden: {e}")),
+            Err(e) => self.set_status(format!("❌ Could not open project: {e}")),
         }
     }
 
@@ -945,7 +945,7 @@ impl App {
             (Some(p), false) => p.clone(),
             _ => {
                 let Some(mut p) = rfd::FileDialog::new()
-                    .add_filter("TextCutForge-Projekt", &["tcf"])
+                    .add_filter("TextCutForge project", &["tcf"])
                     .set_file_name(format!("{}.tcf", self.project.name))
                     .save_file()
                 else {
@@ -966,18 +966,18 @@ impl App {
                 self.dirty = false;
                 self.settings.add_recent(path.clone());
                 self.settings.save();
-                self.set_status(format!("💾 Gespeichert: {}", path.display()));
+                self.set_status(format!("💾 Saved: {}", path.display()));
                 true
             }
             Err(e) => {
-                self.set_status(format!("❌ Speichern fehlgeschlagen: {e}"));
+                self.set_status(format!("❌ Saving failed: {e}"));
                 false
             }
         }
     }
 
     // -----------------------------------------------------------------------
-    // Tastatur
+    // Keyboard
     // -----------------------------------------------------------------------
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
@@ -1068,23 +1068,23 @@ impl App {
             self.confirm_close = true;
         }
         if self.confirm_close {
-            egui::Window::new("Ungespeicherte Änderungen")
+            egui::Window::new("Unsaved changes")
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
-                    ui.label("Das Projekt wurde geändert. Vor dem Beenden speichern?");
+                    ui.label("The project has been modified. Save before quitting?");
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("💾 Speichern").clicked() && self.save(false) {
+                        if ui.button("💾 Save").clicked() && self.save(false) {
                             self.allow_close = true;
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
-                        if ui.button("Verwerfen").clicked() {
+                        if ui.button("Discard").clicked() {
                             self.allow_close = true;
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
-                        if ui.button("Abbrechen").clicked() {
+                        if ui.button("Cancel").clicked() {
                             self.confirm_close = false;
                         }
                     });
@@ -1097,7 +1097,7 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_jobs();
 
-        // Dateien per Drag & Drop
+        // Files via drag & drop
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
         if !dropped.is_empty() {
             self.import_files(dropped, Placement::Main);
@@ -1138,7 +1138,7 @@ impl eframe::App for App {
         ui::dialogs::help_window(self, ctx);
         ui::dialogs::subtitle_window(self, ctx);
         ui::dialogs::start_window(self, ctx);
-        // Undo-Gesten (Slider usw.) enden, sobald die Maus losgelassen wird.
+        // Undo gestures (sliders etc.) end as soon as the mouse is released.
         if !ctx.input(|i| i.pointer.any_down()) && !ctx.wants_keyboard_input() {
             self.inspector_editing = false;
         }
@@ -1147,7 +1147,7 @@ impl eframe::App for App {
         if !self.tasks.is_empty() || self.status_at.elapsed() < Duration::from_secs(1) {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
-        // Scrub-Ergebnisse kommen aus einem Thread ohne Repaint-Signal.
+        // Scrub results come from a thread without a repaint signal.
         ctx.request_repaint_after(Duration::from_millis(60));
     }
 

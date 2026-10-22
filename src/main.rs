@@ -1,4 +1,4 @@
-//! TextCutForge – textbasierter Videoschnitt mit automatischer Stille-Entfernung.
+//! TextCutForge – text-based video editing with automatic silence removal.
 
 mod app;
 mod export;
@@ -15,7 +15,7 @@ mod util;
 use eframe::egui;
 
 fn main() -> eframe::Result<()> {
-    // Optional: Projekt- oder Mediendatei als Argument öffnen.
+    // Optional: open a project or media file passed as an argument.
     let open = std::env::args_os().nth(1).map(std::path::PathBuf::from);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
