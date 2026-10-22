@@ -384,7 +384,7 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
                 ui.add(egui::TextEdit::singleline(&mut s.whisper).hint_text("search automatically").desired_width(300.0));
                 match &found {
                     Some(p) if p.is_file() => ui.label(RichText::new(format!("✅ {}", p.display())).small().color(egui::Color32::LIGHT_GREEN)),
-                    _ => ui.label(RichText::new("❌ Not found – install with: brew install whisper-cpp").small().color(style::WARN)),
+                    _ => ui.label(RichText::new(format!("❌ Not found – install: {}", crate::util::install_hint("whisper"))).small().color(style::WARN)),
                 };
             });
             ui.end_row();

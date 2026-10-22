@@ -118,7 +118,23 @@ pub fn available_fonts() -> Vec<(String, PathBuf)> {
             "DejaVu Sans Bold",
             &["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"],
         ),
-        ("Liberation Sans Bold", &["/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]),
+        (
+            "Liberation Sans Bold",
+            &[
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/liberation-sans/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
+            ],
+        ),
+        (
+            "Noto Sans Bold",
+            &[
+                "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+                "/usr/share/fonts/google-noto/NotoSans-Bold.ttf",
+                "/usr/share/fonts/noto/NotoSans-Bold.ttf",
+            ],
+        ),
+        ("Segoe UI Bold", &["C:\\Windows\\Fonts\\segoeuib.ttf"]),
     ];
     candidates
         .iter()

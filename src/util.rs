@@ -51,15 +51,19 @@ pub fn models_dir() -> PathBuf {
     dir
 }
 
-/// Looks up a program in PATH (plus typical Homebrew paths, since GUI apps
-/// on macOS often have a reduced PATH).
+/// Looks up a program next to the TextCutForge executable (portable setup),
+/// in PATH, and in typical install locations – GUI apps often start with a
+/// reduced PATH (macOS) or before a fresh install updated it (Windows).
 pub fn find_program(names: &[&str]) -> Option<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).collect())
-        .unwrap_or_default();
-    for extra in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
-        dirs.push(PathBuf::from(extra));
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(exe_dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        dirs.push(exe_dir.join("bin"));
+        dirs.push(exe_dir);
     }
+    if let Some(path) = std::env::var_os("PATH") {
+        dirs.extend(std::env::split_paths(&path));
+    }
+    dirs.extend(extra_program_dirs());
     for name in names {
         for dir in &dirs {
             let candidate = dir.join(name);
@@ -73,6 +77,46 @@ pub fn find_program(names: &[&str]) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(target_os = "windows")]
+fn extra_program_dirs() -> Vec<PathBuf> {
+    let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
+    let mut dirs = Vec::new();
+    if let Some(local) = env("LOCALAPPDATA") {
+        dirs.push(local.join("Microsoft").join("WinGet").join("Links"));
+    }
+    if let Some(home) = env("USERPROFILE") {
+        dirs.push(home.join("scoop").join("shims"));
+    }
+    dirs.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin"));
+    dirs.push(PathBuf::from(r"C:\ffmpeg\bin"));
+    dirs.push(PathBuf::from(r"C:\whisper"));
+    dirs.push(PathBuf::from(r"C:\whisper\Release"));
+    dirs
+}
+
+#[cfg(not(target_os = "windows"))]
+fn extra_program_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/snap/bin"].iter().map(PathBuf::from).collect();
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        dirs.push(home.join(".local").join("bin"));
+    }
+    dirs
+}
+
+/// How to install a missing tool on this operating system.
+pub fn install_hint(tool: &str) -> &'static str {
+    let windows = cfg!(target_os = "windows");
+    let macos = cfg!(target_os = "macos");
+    match tool {
+        "ffmpeg" if macos => "brew install ffmpeg",
+        "ffmpeg" if windows => "winget install Gyan.FFmpeg",
+        "ffmpeg" => "sudo apt install ffmpeg  (or dnf/pacman)",
+        _ if macos => "brew install whisper-cpp",
+        _ if windows => "download whisper-bin-x64.zip from github.com/ggml-org/whisper.cpp/releases and put it in C:\\whisper",
+        _ => "build whisper.cpp (see README) and copy whisper-cli to ~/.local/bin",
+    }
 }
 
 /// A program that was not found is still invoked by name,

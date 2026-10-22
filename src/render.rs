@@ -124,8 +124,8 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
                 let expr = segs
                     .iter()
                     .map(|(_, r)| format!("gte(t,{:.6})*lt(t,{:.6})", r.start - ss - half, r.end - ss - half))
-                    .collect::<Vec<_>>()
-                    .join("+");
+                    .collect::<Vec<_>>();
+                let expr = balanced(&expr, '+');
                 let t = &clip.transform;
                 let fit = match (t.fit, spec.fit_override) {
                     (FitMode::Custom, _) => FitMode::Custom,
@@ -178,8 +178,8 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
                 let expr = segs
                     .iter()
                     .map(|(_, r)| format!("gte(t,{:.6})*lt(t,{:.6})", r.start - ss - eps, r.end - ss - eps))
-                    .collect::<Vec<_>>()
-                    .join("+");
+                    .collect::<Vec<_>>();
+                let expr = balanced(&expr, '+');
                 let mut post = String::new();
                 if (clip.volume - 1.0).abs() > 0.001 {
                     post += &format!(",volume={:.3}", clip.volume);
@@ -202,7 +202,7 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
                         .map(|w| tr.curve.expr(&format!("min(1,abs(t-{:.6})/{h:.6})", w[1].0 - segs[0].0)))
                         .collect();
                     if !terms.is_empty() {
-                        envelope = format!(",volume=volume='{}':eval=frame", terms.join("*"));
+                        envelope = format!(",volume=volume='{}':eval=frame", balanced(&terms, '*'));
                     }
                 }
                 let delay = (offset * SAMPLE_RATE as f64).round() as u64;
@@ -266,9 +266,60 @@ pub fn build(p: &Project, spec: &RenderSpec) -> RenderGraph {
     }
 
     let mut args = inputs;
-    args.push("-filter_complex".into());
-    args.push(chains.join(";"));
+    let graph = chains.join(";");
+    match graph_script(&graph) {
+        Some(path) => {
+            args.push("-/filter_complex".into());
+            args.push(path.display().to_string());
+        }
+        None => {
+            args.push("-filter_complex".into());
+            args.push(graph);
+        }
+    }
     RenderGraph { args, duration: dur }
+}
+
+/// Joins expression terms with `op` as a balanced tree of parentheses. ffmpeg's
+/// expression parser fails (ENOMEM) once a flat chain reaches 100 terms – a clip
+/// with 100+ cuts would not render otherwise. Nesting depth stays at log2(n).
+fn balanced(terms: &[String], op: char) -> String {
+    match terms {
+        [] => String::new(),
+        [one] => one.clone(),
+        _ if terms.len() <= 64 => terms.join(&op.to_string()),
+        _ => {
+            let (a, b) = terms.split_at(terms.len() / 2);
+            format!("({}){op}({})", balanced(a, op), balanced(b, op))
+        }
+    }
+}
+
+/// Graphs longer than this go into a file: Windows limits a whole command line to
+/// 32767 characters, Linux a single argument to 128 KiB, and projects with many
+/// cuts produce long select expressions. Inline stays the default elsewhere because
+/// `-/filter_complex` needs ffmpeg 7+.
+#[cfg(not(any(windows, test)))]
+const MAX_INLINE_GRAPH: usize = 100_000;
+#[cfg(any(windows, test))]
+const MAX_INLINE_GRAPH: usize = 12_000;
+
+/// Writes a long graph to the cache (named by content hash) and returns the path
+/// for `-/filter_complex` (ffmpeg 7+). Short graphs stay inline.
+fn graph_script(graph: &str) -> Option<std::path::PathBuf> {
+    use std::hash::{Hash, Hasher};
+    if graph.len() <= MAX_INLINE_GRAPH {
+        return None;
+    }
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    graph.hash(&mut h);
+    let dir = crate::util::cache_dir().join("graphs");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join(format!("{:016x}.txt", h.finish()));
+    if !path.is_file() {
+        std::fs::write(&path, graph).ok()?;
+    }
+    Some(path)
 }
 
 /// Preview size for a given height, matching the project aspect ratio.
@@ -590,6 +641,68 @@ mod tests {
             .unwrap();
         let frames: u32 = String::from_utf8_lossy(&probe.stdout).trim().parse().unwrap();
         assert_eq!(frames, 135, "4.5 s × 30 fps");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Many cuts produce a graph too long for a Windows command line: it must go
+    /// through a script file and still render.
+    #[test]
+    fn long_graph_goes_through_script_file() {
+        if !ffmpeg_available() {
+            eprintln!("ffmpeg missing - test skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tcf_long_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src.mp4");
+        let ok = Command::new("ffmpeg")
+            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=30:duration=60"])
+            .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=60", "-shortest"])
+            .args(["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac"])
+            .arg(&src)
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+
+        let mut p = Project::default();
+        p.width = 160;
+        p.height = 90;
+        let id = p.alloc_id();
+        p.media.push(source(id, src.clone(), 60.0));
+        let main = p.main_track();
+        let c = p.add_clip(id, main, 0.0).unwrap();
+        for i in 0..300 {
+            let t = i as f64 * 0.2;
+            p.clip_mut(c).unwrap().add_cut(Range::new(t + 0.1, t + 0.2), CutKind::Silence);
+        }
+        p.repack_main();
+        let expected = p.duration();
+        let spec = RenderSpec {
+            width: 160,
+            height: 90,
+            from: 0.0,
+            to: expected,
+            video: true,
+            audio: true,
+            fit_override: None,
+            pix_fmt: "yuv420p",
+            out_fps: None,
+            loudnorm: false,
+        };
+        let g = build(&p, &spec);
+        assert!(g.args.iter().any(|a| a == "-/filter_complex"), "long graph must use a script file");
+        assert!(g.args.iter().map(String::len).sum::<usize>() < 8_000, "command line stays short");
+        let out = dir.join("out.mp4");
+        let status = Command::new("ffmpeg")
+            .args(["-v", "error", "-y"])
+            .args(&g.args)
+            .args(["-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac"])
+            .args(["-t", &format!("{expected}")])
+            .arg(&out)
+            .output()
+            .unwrap();
+        assert!(status.status.success(), "{}", String::from_utf8_lossy(&status.stderr));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

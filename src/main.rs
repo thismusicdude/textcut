@@ -1,5 +1,8 @@
 //! TextCutForge – text-based video editing with automatic silence removal.
 
+// No extra console window on Windows (release builds).
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod app;
 mod export;
 mod media;

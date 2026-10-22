@@ -120,7 +120,7 @@ impl Settings {
     /// Is transcription ready to use? Otherwise returns the reason.
     pub fn whisper_ready(&self) -> Result<(), String> {
         if self.whisper_binary().is_none() {
-            return Err("whisper-cli not found (brew install whisper-cpp)".into());
+            return Err(format!("whisper-cli not found ({})", crate::util::install_hint("whisper")));
         }
         if !self.model_file().is_file() {
             return Err(format!("Model \"{}\" is missing – download it in Settings", self.model));

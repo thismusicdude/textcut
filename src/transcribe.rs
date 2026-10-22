@@ -130,8 +130,9 @@ pub fn transcribe(tools: &Tools, cfg: &WhisperConfig, media: &Path, progress: &d
         .spawn()
         .with_context(|| {
             format!(
-                "Failed to start whisper-cli ({}). Install it e.g. with `brew install whisper-cpp`.",
-                cfg.binary.display()
+                "Failed to start whisper-cli ({}). Install it: {}",
+                cfg.binary.display(),
+                crate::util::install_hint("whisper")
             )
         })?;
 

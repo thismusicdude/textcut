@@ -57,7 +57,8 @@ On startup you pick the project type (later via *File → New project …*):
 - Multiple sizes in one pass: Original, 4K, 1440p, 1080p, 720p, 480p,
   9:16 (Reels/TikTok/Shorts), 1:1, 4:5, custom size
 - Other aspect ratios: fit (letterbox) or fill (crop)
-- H.264, H.265, H.264 hardware (VideoToolbox), ProRes 422
+- H.264, H.265, H.264 hardware (VideoToolbox on macOS; NVENC, Quick Sync or AMF on Windows/Linux –
+  whichever works on the machine, otherwise fast software encoding), ProRes 422
 - **Audio export** (in both modes): MP3, M4A (AAC), WAV, FLAC, bitrate 128–320 kbit/s,
   optional **loudness normalization to −16 LUFS**
 - **Burn in subtitles** (💬 in the transcript): text from the transcript, follows all cuts. Presets Classic,
@@ -68,14 +69,90 @@ On startup you pick the project type (later via *File → New project …*):
 
 ## Requirements
 
-| Tool | Purpose | macOS |
-|---|---|---|
-| Rust ≥ 1.86 | Build | `rustup` |
-| ffmpeg + ffprobe | Analysis, preview, export | `brew install ffmpeg` |
-| whisper.cpp (`whisper-cli`) | Transcription (local, offline) | `brew install whisper-cpp` |
+TextCutForge runs on **macOS, Windows and Linux**. It needs three tools:
+
+| Tool | Purpose |
+|---|---|
+| Rust ≥ 1.86 | Build (via [rustup](https://rustup.rs)) |
+| ffmpeg + ffprobe (7 or newer recommended) | Analysis, preview, export |
+| whisper.cpp (`whisper-cli`) | Transcription (local, offline) |
+
+TextCutForge finds the tools in `PATH`, in the usual install locations and **next to its own
+executable** (also in a `bin` folder there) – handy for a portable setup. Paths can also be set
+by hand in **Settings**.
+
+### macOS
+
+```bash
+brew install ffmpeg whisper-cpp
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+cargo run --release
+```
+
+### Windows 10/11
+
+1. **Rust:** install [rustup-init.exe](https://rustup.rs) and accept the
+   *Visual Studio C++ Build Tools* it offers (needed for linking).
+2. **ffmpeg:** in PowerShell `winget install Gyan.FFmpeg`, then open a new terminal.
+   (Alternatives: `scoop install ffmpeg`, `choco install ffmpeg`, or unpack a build from
+   [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) to `C:\ffmpeg`.)
+3. **whisper.cpp:** download `whisper-bin-x64.zip` from the
+   [whisper.cpp releases](https://github.com/ggml-org/whisper.cpp/releases) and unpack it to
+   `C:\whisper` (with an NVIDIA GPU: `whisper-cublas-…-bin-x64.zip` is much faster).
+4. Build and start:
+   ```powershell
+   cargo run --release
+   ```
+   The finished program is `target\release\textcutforge.exe`. To pass it on, put
+   `ffmpeg.exe`, `ffprobe.exe` and the whisper files next to it (or into a `bin` folder beside it).
+
+The model download uses `curl.exe`, which ships with Windows 10 (1803) and later.
+
+### Linux
+
+Build dependencies (window, audio output) plus ffmpeg:
+
+```bash
+# Debian / Ubuntu
+sudo apt install build-essential cmake git pkg-config ffmpeg \
+  libasound2-dev libxkbcommon-dev libgl1-mesa-dev libwayland-dev \
+  libx11-dev libxcursor-dev libxrandr-dev libxi-dev
+
+# Fedora (ffmpeg with all codecs from RPM Fusion)
+sudo dnf install gcc gcc-c++ cmake git pkgconf-pkg-config ffmpeg \
+  alsa-lib-devel libxkbcommon-devel mesa-libGL-devel wayland-devel libX11-devel
+
+# Arch
+sudo pacman -S base-devel cmake git ffmpeg alsa-lib libxkbcommon mesa wayland
+```
+
+whisper.cpp is rarely packaged, so build it once (takes a few minutes):
+
+```bash
+git clone https://github.com/ggml-org/whisper.cpp
+cd whisper.cpp
+cmake -B build -DBUILD_SHARED_LIBS=OFF        # with NVIDIA GPU additionally: -DGGML_CUDA=1
+cmake --build build -j --config Release
+mkdir -p ~/.local/bin && cp build/bin/whisper-cli ~/.local/bin/
+```
+
+Then install Rust (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`) and run
+`cargo run --release` in the TextCutForge folder. File dialogs use the XDG desktop portal
+(present on GNOME, KDE and most desktops).
+
+Ubuntu 22.04 ships ffmpeg 4.4 – too old. Use Ubuntu 24.04 or newer, or a current static
+build from [johnvansickle.com/ffmpeg](https://johnvansickle.com/ffmpeg/) copied to `~/.local/bin`.
+
+### Whisper model
 
 TextCutForge downloads the Whisper model via **Settings → Model → Download**
-to `~/.textcutforge/models/`. `base` is fast, `small` or `large-v3-turbo` are more accurate.
+to `~/.textcutforge/models/` (Windows: `C:\Users\<name>\.textcutforge\models`).
+`base` is fast, `small` or `large-v3-turbo` are more accurate.
+
+### Subtitle fonts
+
+Fonts are picked from the system: Arial/Impact/Verdana/Segoe UI (Windows, macOS),
+DejaVu, Liberation or Noto Sans (Linux). Any other `.ttf`/`.otf` can be chosen in the subtitle window.
 
 ## Running
 

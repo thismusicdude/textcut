@@ -39,7 +39,7 @@ impl Codec {
         match self {
             Codec::H264 => "H.264 (MP4, compatible)",
             Codec::H265 => "H.265/HEVC (MP4, smaller)",
-            Codec::H264Hardware => "H.264 hardware (fast, macOS)",
+            Codec::H264Hardware => "H.264 hardware (fast: VideoToolbox/NVENC/QSV/AMF)",
             Codec::ProRes => "ProRes 422 (MOV, editing quality)",
         }
     }
@@ -50,6 +50,45 @@ impl Codec {
             _ => "mp4",
         }
     }
+}
+
+/// Hardware H.264 encoders per platform, in order of preference.
+const HARDWARE_H264: &[&[&str]] = &[
+    #[cfg(target_os = "macos")]
+    &["-c:v", "h264_videotoolbox", "-q:v", "65"],
+    #[cfg(not(target_os = "macos"))]
+    &["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0"],
+    #[cfg(not(target_os = "macos"))]
+    &["-c:v", "h264_qsv", "-global_quality", "23"],
+    #[cfg(target_os = "windows")]
+    &["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", "22", "-qp_p", "22"],
+];
+
+/// Fallback when no hardware encoder works: fast software encoding.
+const SOFTWARE_FAST_H264: &[&str] = &["-c:v", "libx264", "-preset", "veryfast", "-crf", "21"];
+
+/// First hardware encoder that actually encodes on this machine. ffmpeg often lists
+/// NVENC/QSV/AMF without a matching GPU, so each is tried with a tiny test encode
+/// (once per run).
+fn hardware_h264(ffmpeg: &std::path::Path) -> &'static [&'static str] {
+    static FOUND: std::sync::OnceLock<&'static [&'static str]> = std::sync::OnceLock::new();
+    FOUND.get_or_init(|| {
+        HARDWARE_H264
+            .iter()
+            .copied()
+            .find(|args| {
+                command(ffmpeg)
+                    .args(["-v", "error", "-nostdin", "-f", "lavfi", "-i", "color=s=256x256:r=30:d=0.2", "-pix_fmt", "yuv420p"])
+                    .args(args.iter())
+                    .args(["-f", "null", "-"])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .is_ok_and(|s| s.success())
+            })
+            .unwrap_or(SOFTWARE_FAST_H264)
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -164,7 +203,11 @@ pub fn run(tools: &Tools, p: &Project, job: &ExportJob, progress: &dyn Fn(f32), 
                 Codec::H265 => {
                     vec!["-c:v", "libx265", "-preset", "medium", "-crf", &crf, "-tag:v", "hvc1", "-c:a", "aac", "-b:a", "192k"]
                 }
-                Codec::H264Hardware => vec!["-c:v", "h264_videotoolbox", "-q:v", "65", "-c:a", "aac", "-b:a", "192k"],
+                Codec::H264Hardware => {
+                    let mut v = hardware_h264(&tools.ffmpeg).to_vec();
+                    v.extend(["-c:a", "aac", "-b:a", "192k"]);
+                    v
+                }
                 Codec::ProRes => vec!["-c:v", "prores_ks", "-profile:v", "2", "-c:a", "pcm_s16le"],
             };
             a.extend(v.into_iter().map(String::from));

@@ -204,7 +204,7 @@ impl App {
             log: Vec::new(),
         };
         if media::probe(&tools, Path::new("/nonexistent"), 0).err().is_some_and(|e| e.to_string().contains("Could not start")) {
-            app.set_status("⚠ ffmpeg/ffprobe not found – please install it (brew install ffmpeg) or set the path in Settings.");
+            app.set_status(format!("⚠ ffmpeg/ffprobe not found – please install it ({}) or set the path in Settings.", crate::util::install_hint("ffmpeg")));
         }
         if let Some(path) = open {
             if path.extension().is_some_and(|e| e == "tcf") {
