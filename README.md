@@ -8,7 +8,7 @@ This project is used as experiment to see how far agentic coding already is.
 
 ## How can i support this work?
 
-TextCut is free. Its code was largely generated with AI, and I don't want you to pay something that i rarely touched. 
+TextCut is free. Its code was largely generated with AI, and I don't want you to pay for something that i rarely touched. 
 If the app is useful to you, please donate whatever you like to the following organizations.
 If choose to donate because of this text, send me a notification on Instagram ([@enbytiousmusic](https://www.instagram.com/enbytiousmusic)). That would make me really happy!
 
