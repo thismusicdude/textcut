@@ -28,13 +28,18 @@ pub fn fmt_srt_time(t: f64) -> String {
     format!("{h:02}:{m:02}:{s:02},{ms:03}")
 }
 
-/// Base directory for settings, models and cache: `~/.textcutforge`.
+/// Base directory for settings, models and cache: `~/.textcut`.
 pub fn app_dir() -> PathBuf {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    let dir = home.join(".textcutforge");
+    let dir = home.join(".textcut");
+    // The app was called TextCutForge before: take over its settings and models.
+    let old = home.join(".textcutforge");
+    if !dir.exists() && old.is_dir() {
+        let _ = std::fs::rename(&old, &dir);
+    }
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
@@ -51,7 +56,7 @@ pub fn models_dir() -> PathBuf {
     dir
 }
 
-/// Looks up a program next to the TextCutForge executable (portable setup),
+/// Looks up a program next to the TextCut executable (portable setup),
 /// in PATH, and in typical install locations – GUI apps often start with a
 /// reduced PATH (macOS) or before a fresh install updated it (Windows).
 pub fn find_program(names: &[&str]) -> Option<PathBuf> {

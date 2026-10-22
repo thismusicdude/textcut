@@ -549,7 +549,7 @@ pub fn help_window(app: &mut App, ctx: &egui::Context) {
     }
     let mut open = true;
     egui::Window::new("Help").open(&mut open).default_width(520.0).show(ctx, |ui| {
-        ui.label(RichText::new("How TextCutForge works").strong().size(16.0));
+        ui.label(RichText::new("How TextCut works").strong().size(16.0));
         ui.label("0. On startup, choose a video or audio project (File → New project …). Audio mode has audio tracks only; video files contribute their audio.");
         ui.label("1. Import media (or drag it into the window). It is transcribed and analyzed for silence automatically.");
         ui.label("2. Select words in the text editor and press Delete → that part is cut from the video. Press Delete again to restore it.");
@@ -595,7 +595,7 @@ pub fn start_window(app: &mut App, ctx: &egui::Context) {
     egui::Modal::new(egui::Id::new("start")).show(ctx, |ui| {
         ui.set_width(620.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("⚒ TextCutForge").size(28.0).strong().color(style::ACCENT));
+            ui.label(RichText::new("✂ TextCut").size(28.0).strong().color(style::ACCENT));
             ui.label(RichText::new("Edit video and audio like a text document").weak());
         });
         ui.add_space(14.0);

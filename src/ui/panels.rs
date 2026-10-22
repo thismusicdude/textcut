@@ -9,7 +9,7 @@ use eframe::egui::{self, Color32, RichText, Sense, Stroke, StrokeKind, Vec2};
 pub fn menu_bar(app: &mut App, ctx: &egui::Context) {
     egui::TopBottomPanel::top("menu").show(ctx, |ui| {
         egui::menu::bar(ui, |ui| {
-            ui.label(RichText::new("⚒ TextCutForge").strong().color(style::ACCENT));
+            ui.label(RichText::new("✂ TextCut").strong().color(style::ACCENT));
             let mode = if app.project.is_audio() { "🎧 Audio" } else { "🎬 Video" };
             ui.label(RichText::new(mode).small().background_color(egui::Color32::from_gray(50)))
                 .on_hover_text("Project mode - use \"File → New project\" to switch");

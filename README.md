@@ -1,4 +1,4 @@
-# TextCutForge
+# TextCut
 
 A video editor written in Rust where you **edit text instead of video**: every clip is
 transcribed and shown like a text document. Delete words and the video is cut at exactly
@@ -8,7 +8,7 @@ This project is used as experiment to see how far agentic coding already is.
 
 ## How can i support this work?
 
-TextCutForge is free. Its code was largely generated with AI, and I don't want to charge money
+TextCut is free. Its code was largely generated with AI, and I don't want to charge money
 for generated code. If the app is useful to you, please donate whatever you like to an
 organization that protects animals or children instead. If you choose to donate because of this text, send me a notification on Instagram ([@enbytiousmusic](https://www.instagram.com/enbytiousmusic)). That would make me really happy!
 
@@ -83,7 +83,7 @@ On startup you pick the project type (later via *File → New project …*):
 
 ## Requirements
 
-TextCutForge runs on **macOS, Windows and Linux**. It needs three tools:
+TextCut runs on **macOS, Windows and Linux**. It needs three tools:
 
 | Tool | Purpose |
 |---|---|
@@ -91,7 +91,7 @@ TextCutForge runs on **macOS, Windows and Linux**. It needs three tools:
 | ffmpeg + ffprobe (7 or newer recommended) | Analysis, preview, export |
 | whisper.cpp (`whisper-cli`) | Transcription (local, offline) |
 
-TextCutForge finds the tools in `PATH`, in the usual install locations and **next to its own
+TextCut finds the tools in `PATH`, in the usual install locations and **next to its own
 executable** (also in a `bin` folder there) – handy for a portable setup. Paths can also be set
 by hand in **Settings**.
 
@@ -117,7 +117,7 @@ cargo run --release
    ```powershell
    cargo run --release
    ```
-   The finished program is `target\release\textcutforge.exe`. To pass it on, put
+   The finished program is `target\release\textcut.exe`. To pass it on, put
    `ffmpeg.exe`, `ffprobe.exe` and the whisper files next to it (or into a `bin` folder beside it).
 
 The model download uses `curl.exe`, which ships with Windows 10 (1803) and later.
@@ -151,7 +151,7 @@ mkdir -p ~/.local/bin && cp build/bin/whisper-cli ~/.local/bin/
 ```
 
 Then install Rust (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`) and run
-`cargo run --release` in the TextCutForge folder. File dialogs use the XDG desktop portal
+`cargo run --release` in the TextCut folder. File dialogs use the XDG desktop portal
 (present on GNOME, KDE and most desktops).
 
 Ubuntu 22.04 ships ffmpeg 4.4 – too old. Use Ubuntu 24.04 or newer, or a current static
@@ -159,8 +159,8 @@ build from [johnvansickle.com/ffmpeg](https://johnvansickle.com/ffmpeg/) copied 
 
 ### Whisper model
 
-TextCutForge downloads the Whisper model via **Settings → Model → Download**
-to `~/.textcutforge/models/` (Windows: `C:\Users\<name>\.textcutforge\models`).
+TextCut downloads the Whisper model via **Settings → Model → Download**
+to `~/.textcut/models/` (Windows: `C:\Users\<name>\.textcut\models`).
 `base` is fast, `small` or `large-v3-turbo` are more accurate.
 
 ### Subtitle fonts
@@ -191,7 +191,7 @@ git push origin v0.2.0
 ```
 
 The archives contain the program only; ffmpeg and whisper.cpp still have to be installed (see above).
-The macOS binary is not signed: after downloading, run `xattr -d com.apple.quarantine textcutforge`
+The macOS binary is not signed: after downloading, run `xattr -d com.apple.quarantine textcut`
 once, or allow it under *System Settings → Privacy & Security*.
 
 ## Workflow
@@ -218,7 +218,7 @@ src/
 ├── subtitles.rs   subtitle lines, text rendering (ab_glyph), burn-in via image sequence
 ├── media.rs       ffprobe, waveform, silencedetect
 ├── transcribe.rs  whisper-cli invocation, JSON parser, model download
-├── settings.rs    ~/.textcutforge/settings.json
+├── settings.rs    ~/.textcut/settings.json
 ├── app.rs         app state, undo/redo, background jobs, keyboard
 └── ui/            transcript editor, timeline, panels, dialogs (egui)
 ```

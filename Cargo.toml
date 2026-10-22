@@ -1,9 +1,9 @@
 [package]
-name = "textcutforge"
+name = "textcut"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.86"
-description = "TextCutForge – textbasierter Videoschnitt mit automatischer Stille-Entfernung"
+description = "TextCut – text-based video editing with automatic silence removal"
 license = "MIT"
 
 [dependencies]

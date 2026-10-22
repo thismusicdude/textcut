@@ -1,4 +1,4 @@
-# Builds and tests TextCutForge on Linux, Windows and macOS.
+# Builds and tests TextCut on Linux, Windows and macOS.
 # - every push / pull request: test + build, binaries downloadable as workflow artifacts
 # - tag "v*" (e.g. v0.2.0): additionally creates a GitHub release with the archives attached
 name: Build
@@ -81,10 +81,10 @@ jobs:
           cargo build --release --target aarch64-apple-darwin
           cargo build --release --target x86_64-apple-darwin
           mkdir -p target/release
-          lipo -create -output target/release/textcutforge \
-            target/aarch64-apple-darwin/release/textcutforge \
-            target/x86_64-apple-darwin/release/textcutforge
-          lipo -info target/release/textcutforge
+          lipo -create -output target/release/textcut \
+            target/aarch64-apple-darwin/release/textcut \
+            target/x86_64-apple-darwin/release/textcut
+          lipo -info target/release/textcut
 
       # --- package ---
       - name: Package
@@ -92,12 +92,12 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME//\//-}"
-          name="textcutforge-${version}-${{ matrix.suffix }}"
+          name="textcut-${version}-${{ matrix.suffix }}"
           mkdir "$name"
           if [ "$RUNNER_OS" = "Windows" ]; then
-            cp target/release/textcutforge.exe "$name/"
+            cp target/release/textcut.exe "$name/"
           else
-            cp target/release/textcutforge "$name/"
+            cp target/release/textcut "$name/"
           fi
           cp README.md "$name/"
           if [ "$RUNNER_OS" = "Windows" ]; then

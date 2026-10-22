@@ -1,4 +1,4 @@
-//! Persistent app settings (`~/.textcutforge/settings.json`).
+//! Persistent app settings (`~/.textcut/settings.json`).
 
 use crate::media::Tools;
 use crate::transcribe::{WhisperConfig, model_path};

@@ -923,7 +923,7 @@ impl App {
     }
 
     pub fn open_dialog(&mut self) {
-        if let Some(p) = rfd::FileDialog::new().add_filter("TextCutForge project", &["tcf"]).pick_file() {
+        if let Some(p) = rfd::FileDialog::new().add_filter("TextCut project", &["tcf"]).pick_file() {
             self.open_project(&p);
         }
     }
@@ -961,7 +961,7 @@ impl App {
             (Some(p), false) => p.clone(),
             _ => {
                 let Some(mut p) = rfd::FileDialog::new()
-                    .add_filter("TextCutForge project", &["tcf"])
+                    .add_filter("TextCut project", &["tcf"])
                     .set_file_name(format!("{}.tcf", self.project.name))
                     .save_file()
                 else {
@@ -1123,7 +1123,7 @@ impl eframe::App for App {
         self.update_preview(ctx);
 
         let title = format!(
-            "TextCutForge – {}{}",
+            "TextCut – {}{}",
             self.project.name,
             if self.dirty { " •" } else { "" }
         );
