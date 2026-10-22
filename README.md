@@ -27,6 +27,10 @@ On startup you pick the project type (later via *File → New project …*):
   prompt containing filler words and transcribes them, along with repetitions and slips of the tongue (de/en/fr/es/it/nl).
   Words with hardly any audio underneath are **underlined in yellow**: Whisper may have invented them. "Remove
   filler words" leaves these in place.
+- Filler lists per language (de, en, fr, es, it, nl, pl, pt, tr, uk), editable in Settings. Each
+  recording uses the list of the language Whisper detected (or the configured language); other
+  languages fall back to neutral sounds (hm, hmm, uh, um). Only pure hesitation sounds are in the
+  defaults – real words that often act as fillers ("also", "like") would cut content.
 - Precise word boundaries: DTW timestamps from whisper.cpp plus level analysis. When deleting, only the
   word core is cut; quiet onsets of neighboring words (e.g. the "S" in "Sphäre") are preserved.
 - **Smooth transitions:** at every cut point the audio briefly fades out and back in.

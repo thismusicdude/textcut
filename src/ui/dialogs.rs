@@ -4,7 +4,7 @@ use super::style;
 use crate::app::{App, Placement, TaskKind};
 use crate::export::{AspectHandling, AudioFormat, Codec, ExportJob, ExportKind, PRESETS};
 use crate::project::ProjectMode;
-use crate::transcribe::MODELS;
+use crate::transcribe::{LANGUAGES, MODELS, default_fillers};
 use crate::util::{even, fmt_time};
 use eframe::egui::{self, RichText};
 use std::path::PathBuf;
@@ -324,6 +324,48 @@ fn reveal(path: &PathBuf) {
     let _ = std::process::Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn();
 }
 
+/// "de – German"; "auto" reads as automatic detection.
+fn language_name(code: &str) -> String {
+    match LANGUAGES.iter().find(|(c, _)| *c == code) {
+        Some((c, name)) => format!("{c} – {name}"),
+        None if code == "auto" => "auto – detect".to_string(),
+        None => code.to_string(),
+    }
+}
+
+/// One filler list per language; the list matching each recording's language is used.
+fn filler_editor(ui: &mut egui::Ui, s: &mut crate::settings::Settings) {
+    let id = egui::Id::new("filler_lang");
+    let fallback = if s.language == "auto" { "en".to_string() } else { s.language.clone() };
+    let mut lang: String = ui.data(|d| d.get_temp(id)).unwrap_or(fallback);
+    ui.vertical(|ui| {
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt("filler_lang_combo").selected_text(language_name(&lang)).show_ui(ui, |ui| {
+                for (code, _) in LANGUAGES {
+                    ui.selectable_value(&mut lang, code.to_string(), language_name(code));
+                }
+            });
+            if s.filler_words.contains_key(&lang) && ui.button("⟲ Default").on_hover_text(default_fillers(&lang)).clicked() {
+                s.filler_words.remove(&lang);
+            }
+        });
+        let mut text = s.filler_text(&lang);
+        if ui.add(egui::TextEdit::multiline(&mut text).desired_rows(2).desired_width(300.0)).changed() {
+            if text.trim() == default_fillers(&lang) {
+                s.filler_words.remove(&lang);
+            } else {
+                s.filler_words.insert(lang.clone(), text);
+            }
+        }
+        ui.label(
+            RichText::new("Each recording uses the list of its language (detected by Whisper). Other languages: hm, hmm, uh, um …")
+                .small()
+                .weak(),
+        );
+    });
+    ui.data_mut(|d| d.insert_temp(id, lang));
+}
+
 pub fn settings_window(app: &mut App, ctx: &egui::Context) {
     if !app.show_settings {
         return;
@@ -367,9 +409,10 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
             ui.add(egui::TextEdit::singleline(&mut s.model_path).hint_text("optional: path to ggml-*.bin").desired_width(300.0));
             ui.end_row();
             ui.label("Language");
-            egui::ComboBox::from_id_salt("lang").selected_text(&s.language).show_ui(ui, |ui| {
-                for l in ["auto", "de", "en", "fr", "es", "it", "nl", "pl", "pt", "tr", "ru"] {
-                    ui.selectable_value(&mut s.language, l.to_string(), l);
+            egui::ComboBox::from_id_salt("lang").selected_text(language_name(&s.language)).show_ui(ui, |ui| {
+                ui.selectable_value(&mut s.language, "auto".to_string(), language_name("auto"));
+                for (code, _) in LANGUAGES {
+                    ui.selectable_value(&mut s.language, code.to_string(), language_name(code));
                 }
             });
             ui.end_row();
@@ -411,7 +454,7 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
                 .on_hover_text("This much pause is kept before/after speech so cuts sound natural.");
             ui.end_row();
             ui.label("Filler words");
-            ui.add(egui::TextEdit::multiline(&mut s.fillers).desired_rows(2).desired_width(300.0));
+            filler_editor(ui, s);
             ui.end_row();
         });
         ui.label(RichText::new("After changing threshold/minimum duration: \"Text & Silence → Re-analyze silence\".").small().weak());

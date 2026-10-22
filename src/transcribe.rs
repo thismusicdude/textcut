@@ -55,6 +55,41 @@ pub fn dtw_preset(model: &Path) -> Option<String> {
     Some(preset)
 }
 
+/// Transcription languages offered in the UI (Whisper language codes with English names).
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("de", "German"),
+    ("en", "English"),
+    ("fr", "French"),
+    ("es", "Spanish"),
+    ("it", "Italian"),
+    ("nl", "Dutch"),
+    ("pl", "Polish"),
+    ("pt", "Portuguese"),
+    ("tr", "Turkish"),
+    ("uk", "Ukrainian"),
+];
+
+/// Language-neutral hesitation sounds, used for languages without their own list.
+pub const GENERIC_FILLERS: &str = "hm, hmm, mm, mhm, uh, um";
+
+/// Default filler words per language. Only pure hesitation sounds – real words that
+/// often act as fillers ("also", "like", "este", "şey" …) would delete content.
+pub fn default_fillers(language: &str) -> &'static str {
+    match language {
+        "de" => "äh, ähm, öhm, ehm, hm, hmm, mhm",
+        "en" => "uh, um, uhm, er, erm, ah, hm, hmm, mm, mhm",
+        "fr" => "euh, heu, hum, bah, hm, hmm",
+        "es" => "eh, ehm, em, mmm, hm, hmm",
+        "it" => "ehm, eh, uhm, mmm, hm, hmm",
+        "nl" => "eh, ehm, uh, uhm, hm, hmm",
+        "pl" => "yyy, eee, em, hm, hmm",
+        "pt" => "hã, ãh, ahn, hum, hm, hmm",
+        "tr" => "ıı, ııı, ee, eee, hm, hmm",
+        "uk" => "е, ее, ем, гм, хм, мм",
+        _ => GENERIC_FILLERS,
+    }
+}
+
 /// Prompt with filler words: Whisper adopts the style and transcribes "uh", "um",
 /// repetitions and slips of the tongue instead of smoothing them out.
 pub fn verbatim_prompt(language: &str) -> Option<&'static str> {

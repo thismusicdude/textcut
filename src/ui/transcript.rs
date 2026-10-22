@@ -67,7 +67,7 @@ fn toolbar(app: &mut App, ui: &mut egui::Ui) {
             let ids = app.project.clips.iter().map(|c| c.id).collect();
             app.restore_silence(ids);
         }
-        if ui.button("🗑 Remove filler words").on_hover_text(format!("Removes: {}", app.settings.fillers)).clicked() {
+        if ui.button("🗑 Remove filler words").on_hover_text(filler_hint(app)).clicked() {
             app.remove_fillers_all();
         }
         let subs_label = if app.project.subtitles.burn_in { "💬 Subtitles: on" } else { "💬 Subtitles" };
@@ -453,4 +453,22 @@ fn curve_preview(ui: &mut egui::Ui, t: &crate::project::CutTransition) {
     p.text(egui::pos2(x_of(0.0) + 3.0, rect.top() + 2.0), egui::Align2::LEFT_TOP, "✂ Cut", font.clone(), style::CUT);
     p.text(rect.left_bottom() + egui::vec2(4.0, -2.0), egui::Align2::LEFT_BOTTOM, format!("−{span:.0} ms"), font.clone(), Color32::GRAY);
     p.text(rect.right_bottom() + egui::vec2(-4.0, -2.0), egui::Align2::RIGHT_BOTTOM, format!("+{span:.0} ms"), font, Color32::GRAY);
+}
+
+/// Tooltip: the filler lists that apply to the clips in the project, per language.
+fn filler_hint(app: &App) -> String {
+    let mut langs: Vec<String> = app.project.clips.iter().map(|c| app.clip_filler_language(c.id)).collect();
+    if langs.is_empty() {
+        langs.push(app.settings.filler_language(""));
+    }
+    langs.sort();
+    langs.dedup();
+    let lines: Vec<String> = langs
+        .iter()
+        .map(|l| {
+            let name = if l.is_empty() { "other" } else { l.as_str() };
+            format!("{name}: {}", app.settings.filler_list(l).join(", "))
+        })
+        .collect();
+    format!("Removes (per recording language):\n{}\nEdit the lists in Settings.", lines.join("\n"))
 }

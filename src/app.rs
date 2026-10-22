@@ -654,10 +654,10 @@ impl App {
 
     pub fn remove_fillers_all(&mut self) {
         self.checkpoint();
-        let fillers = self.settings.filler_list();
         let ids: Vec<Id> = self.project.clips.iter().map(|c| c.id).collect();
         let (mut n, mut unsure) = (0, 0);
         for c in ids {
+            let fillers = self.fillers_for_clip(c);
             let (a, b) = self.project.remove_fillers(c, &fillers);
             n += a;
             unsure += b;
@@ -674,6 +674,22 @@ impl App {
             ""
         };
         self.set_status(format!("{n} filler words removed.{hint}{none}"));
+    }
+
+    /// Filler language of a clip's media (detected by Whisper or configured).
+    pub fn clip_filler_language(&self, clip: Id) -> String {
+        let detected = self
+            .project
+            .clip(clip)
+            .and_then(|c| self.project.media(c.source))
+            .and_then(|m| m.transcript.as_ref())
+            .map(|t| t.language.clone())
+            .unwrap_or_default();
+        self.settings.filler_language(&detected)
+    }
+
+    fn fillers_for_clip(&self, clip: Id) -> Vec<String> {
+        self.settings.filler_list(&self.clip_filler_language(clip))
     }
 
     pub fn delete_phrase_all(&mut self, phrase: &str) {

@@ -4,7 +4,11 @@ use crate::media::Tools;
 use crate::transcribe::{WhisperConfig, model_path};
 use crate::util::{app_dir, find_program, program_or_name};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+/// The single filler list of older versions (German and English mixed).
+const LEGACY_DEFAULT_FILLERS: &str = "äh, ähm, öhm, hm, hmm, ehm, uh, um, uhm, erm";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -24,7 +28,12 @@ pub struct Settings {
     pub silence_db: f32,
     pub silence_min: f64,
     pub silence_pad: f64,
-    pub fillers: String,
+    /// Edited filler lists per language code; languages missing here use
+    /// [`crate::transcribe::default_fillers`].
+    pub filler_words: BTreeMap<String, String>,
+    /// Single list of older versions – migrated into `filler_words` on load.
+    #[serde(rename = "fillers", skip_serializing)]
+    legacy_fillers: Option<String>,
     pub preview_height: u32,
     pub preview_fps: u32,
     pub text_size: f32,
@@ -48,7 +57,8 @@ impl Default for Settings {
             silence_db: -35.0,
             silence_min: 0.6,
             silence_pad: 0.12,
-            fillers: "äh, ähm, öhm, hm, hmm, ehm, uh, um, uhm, erm".into(),
+            filler_words: BTreeMap::new(),
+            legacy_fillers: None,
             preview_height: 540,
             preview_fps: 30,
             text_size: 17.0,
@@ -64,7 +74,19 @@ impl Settings {
     }
 
     pub fn load() -> Self {
-        std::fs::read_to_string(Self::path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        let mut s: Settings = std::fs::read_to_string(Self::path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        s.migrate();
+        s
+    }
+
+    /// A customized list from older versions becomes the list for the transcription language.
+    fn migrate(&mut self) {
+        if let Some(old) = self.legacy_fillers.take() {
+            if old.trim() != LEGACY_DEFAULT_FILLERS && !old.trim().is_empty() {
+                let lang = if self.language.trim().is_empty() || self.language == "auto" { "de".to_string() } else { self.language.clone() };
+                self.filler_words.entry(lang).or_insert(old);
+            }
+        }
     }
 
     pub fn save(&self) {
@@ -117,13 +139,61 @@ impl Settings {
         }
     }
 
-    pub fn filler_list(&self) -> Vec<String> {
-        self.fillers.split([',', ';', '\n']).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    /// Language whose filler list applies to a transcript: the language Whisper
+    /// detected, else the configured one. Empty for "auto" without detection.
+    pub fn filler_language(&self, transcript_language: &str) -> String {
+        let detected = transcript_language.trim();
+        if !detected.is_empty() && detected != "auto" {
+            return detected.to_string();
+        }
+        let configured = self.language.trim();
+        if configured == "auto" { String::new() } else { configured.to_string() }
+    }
+
+    /// Filler list of a language as editable text (edited version or default).
+    pub fn filler_text(&self, language: &str) -> String {
+        self.filler_words.get(language).cloned().unwrap_or_else(|| crate::transcribe::default_fillers(language).to_string())
+    }
+
+    pub fn filler_list(&self, language: &str) -> Vec<String> {
+        self.filler_text(language).split([',', ';', '\n']).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
     }
 
     pub fn add_recent(&mut self, path: PathBuf) {
         self.recent.retain(|p| p != &path);
         self.recent.insert(0, path);
         self.recent.truncate(8);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fillers_follow_the_language() {
+        let mut s = Settings { language: "auto".into(), ..Default::default() };
+        assert_eq!(s.filler_language("en"), "en");
+        assert_eq!(s.filler_language(""), "");
+        assert!(s.filler_list("en").contains(&"um".to_string()));
+        assert!(!s.filler_list("en").contains(&"äh".to_string()));
+        assert!(s.filler_list("fr").contains(&"euh".to_string()));
+        assert!(s.filler_list("").contains(&"hmm".to_string()), "unknown language → generic list");
+        s.language = "de".into();
+        assert_eq!(s.filler_language(""), "de");
+        s.filler_words.insert("de".into(), "äh; halt".into());
+        assert_eq!(s.filler_list("de"), vec!["äh".to_string(), "halt".to_string()]);
+    }
+
+    #[test]
+    fn migrates_customized_legacy_list() {
+        let old: Settings = serde_json::from_str(r#"{"language": "de", "fillers": "äh, ähm"}"#).unwrap();
+        let mut s = old.clone();
+        s.migrate();
+        assert_eq!(s.filler_text("de"), "äh, ähm");
+        let mut untouched: Settings = serde_json::from_str(&format!(r#"{{"fillers": "{LEGACY_DEFAULT_FILLERS}"}}"#)).unwrap();
+        untouched.migrate();
+        assert!(untouched.filler_words.is_empty());
+        assert!(!serde_json::to_string(&s).unwrap().contains("\"fillers\""));
     }
 }
