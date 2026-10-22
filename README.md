@@ -8,15 +8,15 @@ This project is used as experiment to see how far agentic coding already is.
 
 ## How can i support this work?
 
-TextCut is free. Its code was largely generated with AI, and I don't want to charge money
-for generated code. If the app is useful to you, please donate whatever you like to an
-organization that protects animals or children instead. If you choose to donate because of this text, send me a notification on Instagram ([@enbytiousmusic](https://www.instagram.com/enbytiousmusic)). That would make me really happy!
+TextCut is free. Its code was largely generated with AI, and I don't want you to pay something that i rarely touched. 
+If the app is useful to you, please donate whatever you like to the following organizations.
+If choose to donate because of this text, send me a notification on Instagram ([@enbytiousmusic](https://www.instagram.com/enbytiousmusic)). That would make me really happy!
 
 - [PETA](https://action.peta.de/page/184137/donate/) 
 - [FOUR PAWS](https://www.four-paws.org)
 - [UNICEF](https://www.unicef.org)
 
-Or watch the documentary [**Dominion**](https://www.dominionmovement.com/watch) (free to stream) that would mean the world to me!
+Or watch the documentary [**Dominion**](https://www.dominionmovement.com/watch) (free to stream, narrated by Joaquin Phoenix) <br> That would mean the world to me!
 
 ## Two modes
 
