@@ -93,6 +93,8 @@ section { padding: 88px 0; }
 .chips { list-style: none; padding: 0; margin: 0 0 56px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .chips li { font-size: .85rem; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: .25em .8em; }
 .hero-shot { position: relative; }
+.screencast { display: block; width: 100%; height: auto; aspect-ratio: 1920 / 1082; background: var(--bg-2); }
+.hero-note { margin-top: 12px; }
 .hero-shot::before {
   content: ""; position: absolute; inset: 10% 5% -10%; z-index: -1;
   background: radial-gradient(closest-side, rgb(255 140 50 / .28), transparent);
