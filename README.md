@@ -6,6 +6,8 @@ those spots. **Silence is detected and removed automatically.**
 
 This project is used as experiment to see how far agentic coding already is.
 
+**Website & screenshots:** [thismusicdude.github.io/textcut](https://thismusicdude.github.io/textcut/)
+
 ## How can i support this work?
 
 TextCut is free. Its code was largely generated with AI, and I don't want you to pay for something that i rarely touched. 

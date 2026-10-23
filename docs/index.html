@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TextCut – edit video by editing text</title>
+  <meta name="description" content="TextCut is a free, open-source video and audio editor written in Rust. Every clip is transcribed locally with Whisper – delete words and the video is cut. Silence is removed automatically.">
+  <meta property="og:title" content="TextCut – edit video by editing text">
+  <meta property="og:description" content="Free, offline, cross-platform. Delete words in the transcript and the video is cut at exactly those spots.">
+  <meta property="og:image" content="assets/og-image.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#151517">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="TextCut home">
+      <img src="assets/favicon.svg" alt="" width="22" height="22">
+      <span>TextCut</span>
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#screenshots">Screenshots</a>
+      <a href="#install">Install</a>
+      <a href="#support">Support</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm" href="https://github.com/thismusicdude/textcut">GitHub</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Free · Open source · macOS, Windows &amp; Linux</p>
+      <h1>Edit video by <span class="strike">cutting&nbsp;footage</span> <span class="accent">editing text</span>.</h1>
+      <p class="lede">
+        TextCut transcribes every clip and shows it like a document. Delete words and the video is cut
+        at exactly those spots. Pauses are detected and removed with one click.
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/thismusicdude/textcut/releases">Download</a>
+        <a class="btn btn-ghost" href="#install">Build from source</a>
+      </div>
+      <ul class="chips" aria-label="Highlights">
+        <li>Runs fully offline</li>
+        <li>Non-destructive, undo/redo</li>
+        <li>Written in Rust</li>
+        <li>MIT licensed</li>
+      </ul>
+
+      <figure class="window hero-shot">
+        <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>TextCut – Video project</span></div>
+        <button class="zoom" data-full="assets/editing.jpg" aria-label="Enlarge screenshot">
+          <img src="assets/editing.jpg" width="2000" height="1127"
+               alt="TextCut main window: transcript with struck-through pauses and filler words, a preview with picture-in-picture, and a timeline with cut markers.">
+        </button>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Try it -->
+  <section class="try">
+    <div class="wrap narrow">
+      <h2>Try it right here</h2>
+      <p class="muted">Click a word or a pause to cut it – that's the whole idea. In TextCut, the video follows.</p>
+      <div class="demo" id="demo" role="group" aria-label="Interactive transcript demo">
+        <span class="w">Welcome</span> <span class="w">to</span> <span class="w">this</span> <span class="w">quick</span> <span class="w">demo.</span>
+        <span class="w pause">⏸ 1.6s</span>
+        <span class="w">Today</span> <span class="w">I</span> <span class="w">want</span> <span class="w">to</span> <span class="w">show</span> <span class="w">you,</span>
+        <span class="w filler">um,</span>
+        <span class="w">how</span> <span class="w">editing</span> <span class="w">video</span> <span class="w">can</span> <span class="w">feel</span> <span class="w">like</span>
+        <span class="w">editing</span> <span class="w">a</span> <span class="w">text</span> <span class="w">document.</span>
+        <span class="w pause">⏸ 2.0s</span>
+      </div>
+      <div class="demo-bar">
+        <span id="demo-stat" class="muted">Length 9.8 s</span>
+        <span class="demo-actions">
+          <button class="btn btn-sm btn-ghost" id="demo-silence" type="button">🔇 Remove silence</button>
+          <button class="btn btn-sm btn-ghost" id="demo-fillers" type="button">Remove filler words</button>
+          <button class="btn btn-sm btn-ghost" id="demo-reset" type="button">Reset</button>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="features">
+    <div class="wrap">
+
+      <article class="feature">
+        <div class="feature-text">
+          <p class="eyebrow">Text editing</p>
+          <h2>Your transcript is your timeline</h2>
+          <p>
+            Drop a video into the window. whisper.cpp transcribes it locally, and every word is linked to its
+            exact position in the footage. Select words by clicking or dragging, press <kbd>Delete</kbd>, done.
+            Press it again to bring them back.
+          </p>
+          <ul class="ticks">
+            <li>Precise word boundaries from DTW timestamps plus level analysis – quiet onsets of neighbouring words survive the cut.</li>
+            <li>Search for a word or phrase and delete every match at once.</li>
+            <li>Words Whisper may have invented (barely any audio underneath) are underlined in yellow.</li>
+          </ul>
+        </div>
+        <figure class="window">
+          <button class="zoom" data-full="assets/transcript.jpg" aria-label="Enlarge screenshot">
+            <img src="assets/transcript.jpg" width="2000" height="1127" loading="lazy"
+                 alt="Freshly transcribed clip with pause markers between sentences and a filler word highlighted.">
+          </button>
+          <figcaption>A freshly transcribed clip: pauses show up as <code>⏸ 1.6s</code> markers.</figcaption>
+        </figure>
+      </article>
+
+      <article class="feature flip">
+        <div class="feature-text">
+          <p class="eyebrow">Silence &amp; filler words</p>
+          <h2>One click for tighter takes</h2>
+          <p>
+            ffmpeg's <code>silencedetect</code> finds every pause. <strong>Remove silence automatically</strong> cuts them
+            from all clips, with adjustable threshold, minimum duration and padding. Filler words like
+            “um” and “uh” go just as fast.
+          </p>
+          <ul class="ticks">
+            <li>Verbatim mode makes Whisper keep fillers, repetitions and slips of the tongue.</li>
+            <li>Filler lists for 10 languages (de, en, fr, es, it, nl, pl, pt, tr, uk), editable in Settings.</li>
+            <li>Smooth audio fades at every cut, with five curve shapes – the timeline length stays the same.</li>
+          </ul>
+        </div>
+        <figure class="window">
+          <button class="zoom" data-full="assets/editing.jpg" aria-label="Enlarge screenshot">
+            <img src="assets/editing.jpg" width="2000" height="1127" loading="lazy"
+                 alt="Transcript after removing silence and filler words: cut items are struck through in red, the timeline shows cut markers.">
+          </button>
+          <figcaption>After one click: 9 seconds of pauses and fillers gone, every cut marked on the timeline.</figcaption>
+        </figure>
+      </article>
+
+      <article class="feature">
+        <div class="feature-text">
+          <p class="eyebrow">Subtitles</p>
+          <h2>Captions that follow every cut</h2>
+          <p>
+            Burn subtitles straight into the video – the text comes from the transcript, so deleted words
+            disappear from the captions too. Pick a preset (Classic, Social Media, Box) or tune font, size,
+            outline, colours and line length yourself.
+          </p>
+          <ul class="ticks">
+            <li>Highlight the word currently being spoken.</li>
+            <li>Sizes are relative to video height, so 16:9 and 9:16 look equally good.</li>
+            <li>Also exports SRT files with matching timing.</li>
+          </ul>
+        </div>
+        <figure class="window">
+          <button class="zoom" data-full="assets/subtitles.jpg" aria-label="Enlarge screenshot">
+            <img src="assets/subtitles-preview.jpg" width="1094" height="620" loading="lazy"
+                 alt="Preview showing uppercase burned-in subtitles with the current word highlighted in yellow.">
+          </button>
+          <figcaption>The “Social Media” look: large capitals, current word highlighted. Click to see the style window.</figcaption>
+        </figure>
+      </article>
+
+      <article class="feature flip">
+        <div class="feature-text">
+          <p class="eyebrow">Export</p>
+          <h2>Every format in a single pass</h2>
+          <p>
+            Tick everything you need – landscape, vertical 9:16 for Reels, TikTok and Shorts, square, 4:5 –
+            and TextCut renders them all at once. Other aspect ratios are letterboxed or cropped to fill.
+          </p>
+          <ul class="ticks">
+            <li>H.264, H.265, ProRes 422 and hardware H.264 (VideoToolbox, NVENC, Quick Sync, AMF).</li>
+            <li>Audio-only export as MP3, M4A, WAV or FLAC, optionally normalised to −16 LUFS.</li>
+            <li>Preview and export share the same render graph – what you see is what you get.</li>
+          </ul>
+        </div>
+        <figure class="window">
+          <button class="zoom" data-full="assets/export.jpg" aria-label="Enlarge screenshot">
+            <img src="assets/export.jpg" width="2000" height="1127" loading="lazy"
+                 alt="Export dialog with Original, Full HD, Vertical 9:16 and Square 1:1 selected, plus MP3 and SRT.">
+          </button>
+          <figcaption>Six files from one click: four video sizes, an MP3 and an SRT.</figcaption>
+        </figure>
+      </article>
+
+      <article class="feature">
+        <div class="feature-text">
+          <p class="eyebrow">Audio projects</p>
+          <h2>Built for podcasts, too</h2>
+          <p>
+            Start an audio project for podcasts, interviews and voice-over. You get audio tracks only, a
+            magnetic main track and cuts that snap to 10&nbsp;ms. Instead of a video preview, a player shows the
+            sentence currently being spoken.
+          </p>
+          <ul class="ticks">
+            <li>Video files contribute their audio.</li>
+            <li>Same silence removal, filler removal and fades as in video projects.</li>
+          </ul>
+        </div>
+        <figure class="window">
+          <button class="zoom" data-full="assets/audio-project.jpg" aria-label="Enlarge screenshot">
+            <img src="assets/audio-project.jpg" width="2000" height="1127" loading="lazy"
+                 alt="Audio project with the transcript on the left and a large player on the right highlighting the word being spoken.">
+          </button>
+          <figcaption>The audio player follows along word by word.</figcaption>
+        </figure>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- More -->
+  <section class="more">
+    <div class="wrap">
+      <h2 class="center">And a real editor underneath</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Multi-track timeline</h3>
+          <p>Magnetic main track, any number of video and audio tracks. Split, trim, move, duplicate, snap, zoom, markers.</p>
+        </div>
+        <div class="card">
+          <h3>Picture-in-picture</h3>
+          <p>Clips on V2 and above with position presets, size, X/Y, opacity and border.</p>
+        </div>
+        <div class="card">
+          <h3>Clip transitions</h3>
+          <p>Crossfade or dip to black/silence, 50–4000 ms, with adjustable audio curve.</p>
+        </div>
+        <div class="card">
+          <h3>Non-destructive</h3>
+          <p>Cuts are stored as source time ranges. Nothing is ever lost, and undo/redo covers everything.</p>
+        </div>
+        <div class="card">
+          <h3>Fast with hundreds of cuts</h3>
+          <p>ffmpeg selects all kept ranges per clip in a single pass, keeping picture and sound in sync.</p>
+        </div>
+        <div class="card">
+          <h3>Private by design</h3>
+          <p>Transcription runs on your machine with whisper.cpp. No account, no upload, no cloud.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Gallery -->
+  <section id="screenshots" class="gallery-section">
+    <div class="wrap">
+      <h2 class="center">Screenshots</h2>
+      <div class="gallery">
+        <button class="zoom shot" data-full="assets/start.jpg">
+          <img src="assets/start.jpg" width="1268" height="678" loading="lazy" alt="Start screen: choose a video or audio project.">
+          <span>Start: video or audio project</span>
+        </button>
+        <button class="zoom shot" data-full="assets/transcript.jpg">
+          <img src="assets/transcript.jpg" width="2000" height="1127" loading="lazy" alt="Transcript with pauses before editing.">
+          <span>Transcript with detected pauses</span>
+        </button>
+        <button class="zoom shot" data-full="assets/editing.jpg">
+          <img src="assets/editing.jpg" width="2000" height="1127" loading="lazy" alt="Transcript after cutting silence and fillers.">
+          <span>Silence and fillers removed</span>
+        </button>
+        <button class="zoom shot" data-full="assets/subtitles.jpg">
+          <img src="assets/subtitles.jpg" width="2000" height="1127" loading="lazy" alt="Subtitle style window next to the preview.">
+          <span>Subtitle styling</span>
+        </button>
+        <button class="zoom shot" data-full="assets/export.jpg">
+          <img src="assets/export.jpg" width="2000" height="1127" loading="lazy" alt="Export dialog.">
+          <span>Multi-format export</span>
+        </button>
+        <button class="zoom shot" data-full="assets/settings.jpg">
+          <img src="assets/settings.jpg" width="2000" height="1127" loading="lazy" alt="Settings for Whisper, silence detection and filler words.">
+          <span>Settings: Whisper, silence, fillers</span>
+        </button>
+        <button class="zoom shot" data-full="assets/audio-project.jpg">
+          <img src="assets/audio-project.jpg" width="2000" height="1127" loading="lazy" alt="Audio project with player.">
+          <span>Audio project</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Workflow -->
+  <section class="workflow">
+    <div class="wrap narrow">
+      <h2 class="center">From raw take to finished video</h2>
+      <ol class="steps">
+        <li><strong>Drop a video</strong> into the window. It lands on the main track and is transcribed and analysed for silence.</li>
+        <li>Click <strong>🔇 Remove silence automatically</strong>.</li>
+        <li><strong>Select slips of the tongue</strong> in the text and delete them with <kbd>Delete</kbd>.</li>
+        <li>Optional: put a second video on V2 via <strong>Picture-in-picture</strong> and position it in the inspector.</li>
+        <li><strong>Export</strong> – for example 1080p and 9:16 at the same time.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section id="install" class="install">
+    <div class="wrap narrow">
+      <h2 class="center">Install</h2>
+      <p class="center muted">
+        Prebuilt archives for every platform are attached to each
+        <a href="https://github.com/thismusicdude/textcut/releases">GitHub release</a>.
+        TextCut also needs <strong>ffmpeg</strong> (7+) and <strong>whisper.cpp</strong>.
+      </p>
+
+      <div class="tabs" role="tablist" aria-label="Operating system">
+        <button role="tab" aria-selected="true" aria-controls="tab-mac" id="t-mac">macOS</button>
+        <button role="tab" aria-selected="false" aria-controls="tab-win" id="t-win" tabindex="-1">Windows</button>
+        <button role="tab" aria-selected="false" aria-controls="tab-linux" id="t-linux" tabindex="-1">Linux</button>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="tab-mac" aria-labelledby="t-mac">
+<pre><code>brew install ffmpeg whisper-cpp
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+git clone https://github.com/thismusicdude/textcut
+cd textcut
+cargo run --release</code></pre>
+        <p class="note">Using the prebuilt binary? It is not signed – run <code>xattr -d com.apple.quarantine textcut</code> once, or allow it under <em>System Settings → Privacy &amp; Security</em>.</p>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="tab-win" aria-labelledby="t-win" hidden>
+        <ol class="plain">
+          <li><strong>Rust:</strong> install <a href="https://rustup.rs">rustup-init.exe</a> and accept the Visual Studio C++ Build Tools it offers.</li>
+          <li><strong>ffmpeg:</strong> <code>winget install Gyan.FFmpeg</code>, then open a new terminal.</li>
+          <li><strong>whisper.cpp:</strong> download <code>whisper-bin-x64.zip</code> from the <a href="https://github.com/ggml-org/whisper.cpp/releases">whisper.cpp releases</a> and unpack it to <code>C:\whisper</code> (NVIDIA GPU: use the <code>cublas</code> build).</li>
+          <li>Build and start:</li>
+        </ol>
+<pre><code>cargo run --release</code></pre>
+        <p class="note">For a portable setup, put <code>ffmpeg.exe</code>, <code>ffprobe.exe</code> and the whisper files next to <code>textcut.exe</code> or in a <code>bin</code> folder beside it.</p>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="tab-linux" aria-labelledby="t-linux" hidden>
+<pre><code># Debian / Ubuntu (24.04 or newer)
+sudo apt install build-essential cmake git pkg-config ffmpeg \
+  libasound2-dev libxkbcommon-dev libgl1-mesa-dev libwayland-dev \
+  libx11-dev libxcursor-dev libxrandr-dev libxi-dev
+
+# whisper.cpp
+git clone https://github.com/ggml-org/whisper.cpp
+cd whisper.cpp
+cmake -B build -DBUILD_SHARED_LIBS=OFF   # NVIDIA: add -DGGML_CUDA=1
+cmake --build build -j --config Release
+mkdir -p ~/.local/bin &amp;&amp; cp build/bin/whisper-cli ~/.local/bin/
+
+# TextCut
+cd .. &amp;&amp; git clone https://github.com/thismusicdude/textcut
+cd textcut &amp;&amp; cargo run --release</code></pre>
+        <p class="note">Fedora and Arch package lists are in the <a href="https://github.com/thismusicdude/textcut#linux">README</a>.</p>
+      </div>
+
+      <p class="center muted small">
+        On first start, download a Whisper model via <strong>Settings → Model → Download</strong>.
+        <code>base</code> is fast; <code>small</code> or <code>large-v3-turbo</code> are more accurate.
+      </p>
+    </div>
+  </section>
+
+  <!-- Shortcuts -->
+  <section class="shortcuts">
+    <div class="wrap narrow">
+      <h2 class="center">Keyboard shortcuts</h2>
+      <dl class="keys">
+        <div><dt><kbd>Space</kbd></dt><dd>Play / pause</dd></div>
+        <div><dt><kbd>Delete</kbd></dt><dd>Cut selected text or clip (again to restore)</dd></div>
+        <div><dt><kbd>S</kbd></dt><dd>Split at playhead</dd></div>
+        <div><dt><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></dt><dd>Undo / redo</dd></div>
+        <div><dt><kbd>⌘D</kbd></dt><dd>Duplicate</dd></div>
+        <div><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Step one frame (with <kbd>⇧</kbd>: one second)</dd></div>
+        <div><dt><kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd></dt><dd>Shuttle</dd></div>
+        <div><dt><kbd>⌘S</kbd> <kbd>⌘O</kbd> <kbd>⌘I</kbd> <kbd>⌘E</kbd></dt><dd>Save, open, import, export</dd></div>
+      </dl>
+      <p class="center muted small">On Windows and Linux, use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.</p>
+    </div>
+  </section>
+
+  <!-- Support -->
+  <section id="support" class="support">
+    <div class="wrap narrow">
+      <h2>How can I support this work?</h2>
+      <p>
+        TextCut is free. Its code was largely generated with AI – the project is an experiment in how far
+        agentic coding already is – and I don't want to charge money for generated code. If the app is useful
+        to you, please donate whatever you like to an organisation that protects animals or children instead.
+      </p>
+      <div class="cta">
+        <a class="btn btn-ghost" href="https://action.peta.de/page/184137/donate/">PETA</a>
+        <a class="btn btn-ghost" href="https://www.four-paws.org">FOUR PAWS</a>
+        <a class="btn btn-ghost" href="https://www.unicef.org">UNICEF</a>
+      </div>
+      <p class="muted">
+        If you donate because of this text, let me know on Instagram
+        (<a href="https://www.instagram.com/enbytiousmusic">@enbytiousmusic</a>) – that would make me really happy!
+        Or watch the documentary <a href="https://www.dominionmovement.com/watch"><strong>Dominion</strong></a> (free to stream).
+        That would mean the world to me.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <span>TextCut · MIT License</span>
+    <span>
+      <a href="https://github.com/thismusicdude/textcut">Source</a> ·
+      <a href="https://github.com/thismusicdude/textcut/releases">Releases</a> ·
+      <a href="https://github.com/thismusicdude/textcut/issues">Issues</a>
+    </span>
+  </div>
+</footer>
+
+<dialog id="lightbox" aria-label="Screenshot">
+  <button class="lb-close" type="button" aria-label="Close">×</button>
+  <img alt="">
+</dialog>
+
+<script src="script.js"></script>
+</body>
+</html>
